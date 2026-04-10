@@ -907,18 +907,7 @@ async function process(text) {
   }
 
   isBusy = false;
-
-  // Haru 说完后自动开始听（mic 已常驻，只需启动 recognition + VAD）
-  if (micReady) {
-    isRecording = true;
-    setState('listening');
-    live.textContent = '';
-    finalTranscript = ''; lastTranscript = '';
-    startRecognition();
-    startVAD();
-  } else {
-    setState('waiting');
-  }
+  setState('waiting');
 }
 
 // ============================================================
