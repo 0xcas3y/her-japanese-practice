@@ -11,6 +11,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+// 调试：打印环境变量是否存在
+console.log('ENV check:', {
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set (' + process.env.ANTHROPIC_API_KEY.slice(0,10) + '...)' : 'MISSING',
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY ? 'set' : 'MISSING',
+  ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY ? 'set' : 'MISSING',
+});
+
 const anthropic = new Anthropic();
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
