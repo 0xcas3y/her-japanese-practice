@@ -398,6 +398,7 @@ let mediaRecorder = null, audioChunks = [];
 let finalTranscript = '', lastTranscript = '';
 let aiState = 'idle';
 let micReady = false;
+let sessionEnded = false;
 
 const soul = document.getElementById('soul');
 const label = document.getElementById('label');
@@ -733,6 +734,7 @@ function stopVAD() {
 // ============================================================
 async function startRec() {
   if (isRecording) return;
+  sessionEnded = false;
 
   ap.pause(); ap.currentTime = 0;
   speechSynthesis.cancel();
@@ -907,7 +909,18 @@ async function process(text) {
   }
 
   isBusy = false;
-  setState('waiting');
+
+  // Haru 说完后自动开始听（除非会话已结束）
+  if (micReady && !sessionEnded) {
+    isRecording = true;
+    setState('listening');
+    live.textContent = '';
+    finalTranscript = ''; lastTranscript = '';
+    startRecognition();
+    startVAD();
+  } else {
+    setState('waiting');
+  }
 }
 
 // ============================================================
@@ -1082,8 +1095,10 @@ let pendingDuration = 0; // 暂存时长，dialog 确认后用
 
 function endSession() {
   if (!messages.length) return;
-  // 停止录音
+  sessionEnded = true;
   if (isRecording) stopRec(true);
+  stopVAD();
+  releaseMic();
   // 计算时长但先不清除 timer
   pendingDuration = sessionStart ? Math.floor((Date.now() - sessionStart) / 1000) : 0;
   const m = Math.floor(pendingDuration / 60);
@@ -1127,7 +1142,7 @@ function discardAndEnd() {
 }
 
 function cancelEnd() {
-  // 恢复计时（sessionStart 没被清除）
+  sessionEnded = false;
   document.getElementById('endDialog').classList.remove('open');
 }
 
