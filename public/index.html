@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Haru</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400&family=Noto+Sans+JP:wght@200;300;400&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      font-family:'Inter','Noto Sans JP',sans-serif;
+      background:#050508;color:#e8e0d4;
+      height:100dvh;overflow:hidden;
+      display:flex;flex-direction:column;
+      -webkit-user-select:none;user-select:none;
+    }
+
+    /* ===== Full-screen canvas ===== */
+    canvas{position:fixed;inset:0;z-index:0;}
+
+    /* ===== Ambient glows ===== */
+    .glow{
+      position:fixed;border-radius:50%;filter:blur(100px);opacity:0;
+      transition:opacity 3s ease;pointer-events:none;z-index:1;
+    }
+    .glow.on{opacity:1;}
+    .glow-1{width:400px;height:400px;background:radial-gradient(circle,rgba(255,100,60,0.08),transparent 70%);top:-80px;left:-80px;}
+    .glow-2{width:300px;height:300px;background:radial-gradient(circle,rgba(255,160,100,0.06),transparent 70%);bottom:-60px;right:-60px;}
+    .glow-center{width:350px;height:350px;background:radial-gradient(circle,rgba(255,140,80,0.05),transparent 60%);top:50%;left:50%;transform:translate(-50%,-50%);}
+
+    /* ===== Layout ===== */
+    .scene{
+      position:relative;z-index:2;flex:1;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:50px 24px 50px;overflow:hidden;
+    }
+
+    /* ===== Soul orb ===== */
+    .soul{
+      position:relative;width:140px;height:140px;
+      cursor:pointer;-webkit-tap-highlight-color:transparent;
+      flex-shrink:0;transition:all 1s cubic-bezier(0.4,0,0.2,1);
+    }
+    .soul-core{
+      width:100%;height:100%;border-radius:50%;
+      background:radial-gradient(circle at 35% 35%,#ffb088,#ff7043 40%,#e64a19 80%);
+      box-shadow:0 0 60px 15px rgba(255,112,67,0.2),0 0 120px 40px rgba(255,112,67,0.06);
+      animation:soul-idle 5s infinite ease-in-out;
+      transition:all 0.6s ease;
+    }
+    /* States */
+    .soul.listening .soul-core{
+      background:radial-gradient(circle at 35% 35%,#ff8a80,#ff5252 40%,#d32f2f 80%);
+      box-shadow:0 0 80px 25px rgba(255,82,82,0.3),0 0 150px 50px rgba(255,82,82,0.08);
+      animation:soul-listen 1.8s infinite ease-in-out;
+    }
+    .soul.thinking .soul-core{
+      background:radial-gradient(circle at 35% 35%,#ffe0b2,#ffb74d 40%,#ff9800 80%);
+      box-shadow:0 0 70px 20px rgba(255,183,77,0.25);
+      animation:soul-think 2.5s infinite ease-in-out;
+    }
+    .soul.speaking .soul-core{
+      background:radial-gradient(circle at 35% 35%,#ffcc80,#ff8a65 40%,#ff5722 80%);
+      box-shadow:0 0 90px 30px rgba(255,138,101,0.35);
+      animation:soul-speak 0.6s infinite ease-in-out;
+    }
+    .soul.waiting .soul-core{
+      box-shadow:0 0 80px 25px rgba(255,112,67,0.35),0 0 140px 50px rgba(255,112,67,0.1);
+      animation:soul-waiting 2s infinite ease-in-out;
+    }
+
+    @keyframes soul-idle{0%,100%{transform:scale(1)}50%{transform:scale(1.015)}}
+    @keyframes soul-listen{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+    @keyframes soul-think{0%,100%{transform:scale(0.97);opacity:.85}50%{transform:scale(1.03);opacity:1}}
+    @keyframes soul-speak{0%,100%{transform:scale(1)}30%{transform:scale(1.04)}60%{transform:scale(0.97)}}
+    @keyframes soul-waiting{0%,100%{transform:scale(1);box-shadow:0 0 80px 25px rgba(255,112,67,0.35)}50%{transform:scale(1.03);box-shadow:0 0 100px 35px rgba(255,112,67,0.45)}}
+
+    .soul-ring{
+      position:absolute;inset:-10px;border-radius:50%;
+      border:1px solid rgba(255,112,67,0.1);
+      animation:ring-spin 12s linear infinite;
+    }
+    .soul-ring::after{
+      content:'';position:absolute;top:0;left:50%;
+      width:3px;height:3px;background:rgba(255,160,120,0.4);
+      border-radius:50%;transform:translateX(-50%);
+    }
+    @keyframes ring-spin{to{transform:rotate(360deg)}}
+
+    /* ===== Soul label ===== */
+    .soul-label{
+      margin-top:20px;font-size:10px;font-weight:200;
+      letter-spacing:8px;text-transform:uppercase;
+      color:rgba(255,176,136,0.35);transition:all 0.6s;
+      flex-shrink:0;text-align:center;
+    }
+
+    /* ===== Dialogue area ===== */
+    .dialogue{
+      flex:1;width:100%;max-width:520px;
+      display:flex;flex-direction:column;justify-content:flex-end;
+      padding:30px 0 10px;overflow-y:auto;
+      mask-image:linear-gradient(to bottom,transparent,black 40px,black calc(100% - 20px),transparent);
+      -webkit-mask-image:linear-gradient(to bottom,transparent,black 40px,black calc(100% - 20px),transparent);
+    }
+
+    /* Messages - floating text, no bubbles */
+    .d-msg{padding:14px 0;animation:text-fade 0.8s ease-out;}
+    @keyframes text-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+    .d-you{text-align:right;}
+    .d-you .d-text{color:rgba(255,255,255,0.55);font-size:16px;font-weight:300;letter-spacing:0.5px;}
+
+    .d-haru{text-align:center;padding:18px 0;}
+    .d-haru .d-text{
+      color:rgba(240,235,225,0.95);font-size:22px;font-weight:300;
+      line-height:1.8;letter-spacing:0.3px;
+    }
+
+    /* Action buttons - nearly invisible */
+    .d-actions{display:flex;gap:16px;margin-top:8px;justify-content:center;}
+    .d-you .d-actions{justify-content:flex-end;}
+    .d-act{
+      background:none;border:none;padding:3px 0;
+      color:rgba(255,176,136,0.25);font-size:10px;letter-spacing:2px;
+      cursor:pointer;font-family:inherit;transition:color 0.4s;
+    }
+    .d-act:hover,.d-act.on{color:rgba(255,176,136,0.6);}
+
+    /* Hidden detail / translation */
+    .d-detail,.d-trans{display:none;margin-top:6px;animation:text-fade 0.5s ease-out;}
+    .d-detail.open,.d-trans.open{display:block;}
+    .d-correction{color:rgba(255,171,145,0.7);font-size:14px;font-weight:300;}
+    .d-explanation{color:rgba(255,171,145,0.5);font-size:13px;font-weight:200;margin-top:2px;}
+    .d-trans{color:rgba(255,255,255,0.45);font-size:15px;font-weight:200;font-style:italic;}
+
+    /* Typing indicator */
+    .d-typing{text-align:center;padding:18px 0;animation:text-fade 0.5s ease-out;}
+    .wave{display:flex;gap:5px;justify-content:center;}
+    .wave span{
+      width:5px;height:5px;background:rgba(255,176,136,0.25);
+      border-radius:50%;animation:w 1.4s infinite ease-in-out;
+    }
+    .wave span:nth-child(2){animation-delay:.15s}
+    .wave span:nth-child(3){animation-delay:.3s}
+    @keyframes w{0%,60%,100%{transform:translateY(0);opacity:.25}30%{transform:translateY(-8px);opacity:.6}}
+
+    /* ===== Live transcript ===== */
+    .live{
+      position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:5;
+      font-size:15px;color:rgba(255,176,136,0.6);font-weight:300;
+      max-width:85%;text-align:center;overflow:hidden;text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    /* ===== Bottom controls ===== */
+    .controls{
+      position:relative;z-index:3;
+      padding:10px 20px max(20px,env(safe-area-inset-bottom));
+      display:flex;align-items:center;gap:12px;
+    }
+    .mic{
+      width:56px;height:56px;border-radius:50%;position:relative;
+      background:linear-gradient(145deg,rgba(40,38,45,0.9),rgba(25,23,30,0.95));
+      border:1px solid rgba(255,255,255,0.06);
+      box-shadow:0 2px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.04);
+      cursor:pointer;display:flex;align-items:center;justify-content:center;
+      transition:all 0.4s ease;-webkit-tap-highlight-color:transparent;flex-shrink:0;
+      overflow:visible;
+    }
+    /* 声波环 */
+    .mic::before,.mic::after{
+      content:'';position:absolute;border-radius:50%;
+      border:1px solid rgba(200,180,160,0.08);
+      transition:all 0.4s ease;
+    }
+    .mic::before{inset:-6px;animation:mic-breathe 4s infinite ease-in-out;}
+    .mic::after{inset:-14px;animation:mic-breathe 4s infinite ease-in-out 1s;opacity:0.5;}
+    @keyframes mic-breathe{
+      0%,100%{transform:scale(1);opacity:0.5;border-color:rgba(200,180,160,0.06);}
+      50%{transform:scale(1.04);opacity:1;border-color:rgba(200,180,160,0.12);}
+    }
+    .mic svg{
+      color:rgba(200,185,170,0.4);transition:color 0.3s;
+      filter:drop-shadow(0 0 3px rgba(200,180,160,0.1));
+    }
+    .mic:hover svg{color:rgba(200,185,170,0.6);}
+    .mic:active{transform:scale(0.93);}
+
+    /* Recording state */
+    .mic.active{
+      background:linear-gradient(145deg,rgba(50,35,35,0.95),rgba(30,20,20,0.95));
+      border-color:rgba(255,120,100,0.15);
+      box-shadow:0 0 25px rgba(255,100,80,0.08),inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .mic.active svg{color:rgba(255,140,120,0.7);}
+    .mic.active::before{
+      border-color:rgba(255,120,100,0.2);
+      animation:mic-wave 1.5s infinite ease-out;
+    }
+    .mic.active::after{
+      border-color:rgba(255,120,100,0.12);
+      animation:mic-wave 1.5s infinite ease-out 0.4s;
+    }
+    @keyframes mic-wave{
+      0%{transform:scale(1);opacity:0.8;}
+      100%{transform:scale(1.5);opacity:0;}
+    }
+    .inp{
+      flex:1;background:rgba(255,255,255,0.02);
+      border:1px solid rgba(255,255,255,0.04);border-radius:26px;
+      padding:13px 18px;color:rgba(232,224,212,0.7);font-size:14px;
+      font-weight:200;font-family:inherit;outline:none;transition:border-color 0.3s;
+    }
+    .inp::placeholder{color:rgba(255,255,255,0.08);}
+    .inp:focus{border-color:rgba(255,112,67,0.15);}
+
+    /* ===== Top buttons ===== */
+    .top{
+      position:fixed;top:12px;z-index:10;display:flex;gap:8px;
+    }
+    .top.left{left:16px;}
+    .top.right{right:16px;}
+    .tbtn{
+      background:none;border:1px solid rgba(255,255,255,0.1);
+      color:rgba(255,255,255,0.4);font-size:10px;padding:6px 14px;
+      border-radius:16px;cursor:pointer;font-family:inherit;letter-spacing:1px;
+      transition:all 0.3s;-webkit-tap-highlight-color:transparent;
+    }
+    .tbtn:hover{color:rgba(255,255,255,0.6);border-color:rgba(255,255,255,0.2);}
+
+    /* ===== History overlay ===== */
+    .overlay{
+      display:none;position:fixed;inset:0;z-index:50;
+      background:rgba(5,5,8,0.97);backdrop-filter:blur(30px);
+      flex-direction:column;padding:20px;
+    }
+    .overlay.open{display:flex;}
+    .overlay-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+    .overlay-title{font-size:18px;font-weight:300;letter-spacing:4px;color:rgba(255,176,136,0.8);}
+    .overlay-close{
+      background:none;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.5);
+      padding:7px 16px;border-radius:16px;font-size:11px;cursor:pointer;font-family:inherit;letter-spacing:1px;
+    }
+    .overlay-body{flex:1;overflow-y:auto;}
+    .h-msg{padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.02);}
+    .h-role{font-size:9px;color:rgba(255,176,136,0.5);letter-spacing:3px;text-transform:uppercase;}
+    .h-text{font-size:15px;font-weight:300;color:rgba(255,255,255,0.7);margin-top:3px;line-height:1.6;}
+
+    /* ===== BGM button ===== */
+    .bgm-indicator{
+      width:6px;height:6px;border-radius:50%;
+      background:rgba(255,176,136,0.5);display:inline-block;
+      margin-right:4px;vertical-align:middle;
+    }
+    .bgm-indicator.playing{animation:bgm-pulse 2s infinite;}
+    @keyframes bgm-pulse{0%,100%{opacity:.3}50%{opacity:.8}}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:0px;}
+
+    /* Error */
+    .toast{
+      position:fixed;top:16px;left:50%;transform:translateX(-50%);
+      background:rgba(180,40,40,0.12);border:1px solid rgba(180,40,40,0.2);
+      color:rgba(239,154,154,0.7);padding:8px 20px;border-radius:20px;
+      font-size:11px;font-weight:200;z-index:100;animation:text-fade 0.4s ease-out;
+    }
+
+    /* ===== End session dialog ===== */
+    .dialog-bg{
+      display:none;position:fixed;inset:0;z-index:60;
+      background:rgba(5,5,8,0.9);backdrop-filter:blur(20px);
+      align-items:center;justify-content:center;
+    }
+    .dialog-bg.open{display:flex;}
+    .dialog-box{
+      background:rgba(20,18,25,0.95);border:1px solid rgba(255,176,136,0.1);
+      border-radius:20px;padding:30px;max-width:340px;width:90%;text-align:center;
+    }
+    .dialog-title{font-size:16px;font-weight:300;color:rgba(255,176,136,0.85);letter-spacing:2px;margin-bottom:6px;}
+    .dialog-sub{font-size:12px;font-weight:300;color:rgba(255,255,255,0.45);margin-bottom:24px;}
+    .dialog-btns{display:flex;gap:10px;justify-content:center;}
+    .dialog-btn{
+      padding:10px 22px;border-radius:14px;font-size:11px;font-weight:300;
+      font-family:inherit;cursor:pointer;letter-spacing:1px;transition:all 0.3s;border:none;
+    }
+    .dialog-btn.save{background:rgba(255,112,67,0.15);color:rgba(255,176,136,0.8);}
+    .dialog-btn.save:hover{background:rgba(255,112,67,0.25);}
+    .dialog-btn.discard{background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.25);}
+    .dialog-btn.discard:hover{background:rgba(255,255,255,0.08);}
+    .dialog-btn.cancel{background:none;color:rgba(255,255,255,0.15);}
+
+    /* ===== History sessions ===== */
+    .h-session{
+      border:1px solid rgba(255,176,136,0.06);border-radius:14px;
+      margin-bottom:12px;overflow:hidden;transition:border-color 0.3s;
+    }
+    .h-session:hover{border-color:rgba(255,176,136,0.12);}
+    .h-session-head{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:12px 16px;cursor:pointer;
+    }
+    .h-session-info{flex:1;}
+    .h-session-date{font-size:12px;font-weight:300;color:rgba(255,176,136,0.7);}
+    .h-session-stats{font-size:10px;color:rgba(255,255,255,0.35);margin-top:2px;letter-spacing:0.5px;}
+    .h-session-preview{font-size:13px;font-weight:300;color:rgba(255,255,255,0.5);margin-top:4px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;}
+    .h-session-del{
+      background:none;border:1px solid rgba(255,80,80,0.15);color:rgba(255,80,80,0.4);
+      padding:5px 10px;border-radius:10px;font-size:10px;cursor:pointer;
+      font-family:inherit;letter-spacing:1px;transition:all 0.3s;flex-shrink:0;
+    }
+    .h-session-del:hover{color:rgba(255,80,80,0.6);border-color:rgba(255,80,80,0.3);}
+    .h-session-body{display:none;padding:0 16px 14px;max-height:300px;overflow-y:auto;}
+    .h-session-body.open{display:block;}
+
+    /* ===== Stats bar ===== */
+    .stats{
+      display:flex;gap:20px;justify-content:center;padding:16px;margin-bottom:12px;
+      border-bottom:1px solid rgba(255,176,136,0.04);
+    }
+    .stat-item{text-align:center;}
+    .stat-val{font-size:22px;font-weight:300;color:rgba(255,176,136,0.85);}
+    .stat-label{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
+
+    /* timer display */
+    .timer{
+      position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:10;
+      font-size:10px;font-weight:200;color:rgba(255,176,136,0.2);letter-spacing:3px;
+      display:none;
+    }
+    .timer.on{display:block;}
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div class="glow glow-1 on"></div>
+<div class="glow glow-2 on"></div>
+<div class="glow glow-center"></div>
+
+<!-- Top -->
+<div class="top left">
+  <button class="tbtn" onclick="openHistory()">history</button>
+  <button class="tbtn" id="bgmBtn" onclick="toggleBGM()"><span class="bgm-indicator" id="bgmDot"></span>bgm</button>
+</div>
+<div class="top right">
+  <button class="tbtn" onclick="endSession()">end</button>
+</div>
+
+<!-- Timer -->
+<div class="timer" id="timer"></div>
+
+<!-- End session dialog -->
+<div class="dialog-bg" id="endDialog">
+  <div class="dialog-box">
+    <div class="dialog-title">End Session</div>
+    <div class="dialog-sub" id="dialogSub">Save this conversation for review?</div>
+    <div class="dialog-btns">
+      <button class="dialog-btn save" onclick="saveAndEnd()">save</button>
+      <button class="dialog-btn discard" onclick="discardAndEnd()">discard</button>
+      <button class="dialog-btn cancel" onclick="cancelEnd()">cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- History -->
+<div class="overlay" id="histPanel">
+  <div class="overlay-head">
+    <div class="overlay-title">HISTORY</div>
+    <button class="overlay-close" onclick="closeHistory()">close</button>
+  </div>
+  <div class="overlay-body" id="histBody"></div>
+</div>
+
+<!-- Scene -->
+<div class="scene">
+  <div class="soul" id="soul" onclick="tap()">
+    <div class="soul-core"></div>
+    <div class="soul-ring"></div>
+  </div>
+  <div class="soul-label" id="label">tap to speak</div>
+  <div class="dialogue" id="dialogue"></div>
+</div>
+
+<div class="live" id="live"></div>
+
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let messages = JSON.parse(localStorage.getItem('haruMsg2') || '[]');
+let isRecording = false, isBusy = false;
+let recognition, micStream = null;
+let mediaRecorder = null, audioChunks = [];
+let finalTranscript = '', lastTranscript = '';
+let aiState = 'idle';
+let micReady = false;
+
+const soul = document.getElementById('soul');
+const label = document.getElementById('label');
+const dlg = document.getElementById('dialogue');
+const live = document.getElementById('live');
+
+const ap = new Audio();
+let audioUnlocked = false;
+
+// ============================================================
+// PARTICLE SYSTEM
+// ============================================================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const pts = [];
+const N = 100;
+let cx, cy;
+
+function resizeCanvas() {
+  canvas.width = innerWidth; canvas.height = innerHeight;
+  cx = canvas.width / 2; cy = canvas.height * 0.35;
+}
+addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+class Pt {
+  constructor() { this.spawn(); }
+  spawn() {
+    this.x = Math.random() * canvas.width;
+    this.y = Math.random() * canvas.height;
+    this.sz = Math.random() * 1.8 + 0.3;
+    this.baseSz = this.sz;
+    this.vx = (Math.random() - 0.5) * 0.2;
+    this.vy = (Math.random() - 0.5) * 0.2;
+    this.a = Math.random() * 0.3 + 0.05;
+    this.ba = this.a;
+    this.ph = Math.random() * Math.PI * 2;
+  }
+  update(t) {
+    this.ph += 0.005;
+    if (aiState === 'speaking') {
+      this.x += (cx - this.x) * 0.003;
+      this.y += (cy - this.y) * 0.003;
+      this.a = this.ba + Math.sin(t * 0.008 + this.ph) * 0.25 + 0.15;
+      this.sz = this.baseSz + Math.sin(t * 0.01 + this.ph) * 0.5;
+    } else if (aiState === 'listening') {
+      this.x += (cx - this.x) * 0.001;
+      this.y += (cy - this.y) * 0.001;
+      this.a = this.ba + Math.sin(t * 0.005 + this.ph) * 0.1;
+      this.sz = this.baseSz;
+    } else if (aiState === 'thinking') {
+      const dx = this.x - cx, dy = this.y - cy;
+      const ang = 0.0005;
+      this.x = cx + dx * Math.cos(ang) - dy * Math.sin(ang);
+      this.y = cy + dx * Math.sin(ang) + dy * Math.cos(ang);
+      this.a = this.ba + Math.sin(t * 0.003) * 0.08;
+      this.sz = this.baseSz;
+    } else {
+      this.x += this.vx + Math.sin(this.ph) * 0.05;
+      this.y += this.vy + Math.cos(this.ph) * 0.05;
+      this.a = this.ba + Math.sin(this.ph) * 0.03;
+      this.sz = this.baseSz;
+      if (this.x < 0) this.x = canvas.width;
+      if (this.x > canvas.width) this.x = 0;
+      if (this.y < 0) this.y = canvas.height;
+      if (this.y > canvas.height) this.y = 0;
+    }
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, Math.max(0.2, this.sz), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,176,136,${Math.max(0, Math.min(1, this.a))})`;
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < N; i++) pts.push(new Pt());
+
+function drawPts(t) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < N; i++) {
+    pts[i].update(t); pts[i].draw();
+    for (let j = i + 1; j < N; j++) {
+      const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 15000) {
+        const a = (1 - d2 / 15000) * (aiState === 'speaking' ? 0.12 : 0.04);
+        ctx.strokeStyle = `rgba(255,176,136,${a})`;
+        ctx.lineWidth = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y);
+        ctx.lineTo(pts[j].x, pts[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawPts);
+}
+requestAnimationFrame(drawPts);
+
+// ============================================================
+// BGM - Ambient Audio
+// ============================================================
+let bgmAudio = null, bgmPlaying = false, bgmInited = false;
+
+function initBGM() {
+  if (bgmInited) return;
+  bgmInited = true;
+  bgmAudio = new Audio('/bgm.mp3');
+  bgmAudio.loop = true;
+  bgmAudio.volume = 0;
+  bgmAudio.preload = 'auto';
+}
+
+function startBGM() {
+  initBGM();
+  if (bgmPlaying) return;
+  bgmAudio.play().catch(() => {});
+  let v = 0;
+  const fadeIn = setInterval(() => {
+    v = Math.min(v + 0.001, 0.03);
+    bgmAudio.volume = v;
+    if (v >= 0.03) clearInterval(fadeIn);
+  }, 50);
+  bgmPlaying = true;
+  document.getElementById('bgmDot').classList.add('playing');
+}
+
+function stopBGM() {
+  if (!bgmPlaying || !bgmAudio) return;
+  let v = bgmAudio.volume;
+  const fadeOut = setInterval(() => {
+    v = Math.max(v - 0.003, 0);
+    bgmAudio.volume = v;
+    if (v <= 0) { clearInterval(fadeOut); bgmAudio.pause(); }
+  }, 50);
+  bgmPlaying = false;
+  document.getElementById('bgmDot').classList.remove('playing');
+}
+
+function toggleBGM() {
+  if (bgmPlaying) stopBGM();
+  else startBGM();
+}
+
+// ============================================================
+// STATE
+// ============================================================
+function setState(s) {
+  aiState = s;
+  soul.className = 'soul' + (s !== 'idle' ? ' ' + s : '');
+  const gc = document.querySelector('.glow-center');
+  switch (s) {
+    case 'idle': label.textContent = 'tap to speak'; gc.classList.remove('on'); break;
+    case 'listening': label.textContent = 'listening'; gc.classList.add('on'); break;
+    case 'thinking': label.textContent = ''; gc.classList.add('on'); break;
+    case 'speaking': label.textContent = ''; gc.classList.add('on'); break;
+    case 'waiting': label.textContent = 'your turn'; gc.classList.add('on'); break;
+  }
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  dlg.innerHTML = '';
+  messages.forEach((msg, idx) => {
+    const el = document.createElement('div');
+    el.className = 'd-msg';
+    if (msg.role === 'user') {
+      el.classList.add('d-you');
+      const hasFix = msg.corrected && msg.corrected !== msg.text;
+      const hasExp = !!msg.explanation;
+      el.innerHTML = `<div class="d-text">${esc(msg.text)}</div>` +
+        (hasFix || hasExp ? `
+          <div class="d-actions"><button class="d-act" data-a="detail" data-i="${idx}">correction</button></div>
+          <div class="d-detail" id="dt-${idx}">
+            ${hasFix ? `<div class="d-correction">${esc(msg.corrected)}</div>` : ''}
+            ${hasExp ? `<div class="d-explanation">${esc(msg.explanation)}</div>` : ''}
+          </div>` : '');
+    } else {
+      el.classList.add('d-haru');
+      el.innerHTML = `
+        <div class="d-text">${esc(msg.response)}</div>
+        <div class="d-actions">
+          <button class="d-act" data-a="replay" data-i="${idx}">replay</button>
+          <button class="d-act" data-a="translate" data-i="${idx}">translate</button>
+        </div>
+        <div class="d-trans" id="tr-${idx}"></div>`;
+    }
+    dlg.appendChild(el);
+  });
+  dlg.scrollTop = dlg.scrollHeight;
+  localStorage.setItem('haruMsg2', JSON.stringify(messages));
+}
+
+dlg.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.d-act');
+  if (!btn) return;
+  const a = btn.dataset.a, i = +btn.dataset.i;
+  if (a === 'detail') {
+    const el = document.getElementById(`dt-${i}`);
+    if (el) { el.classList.toggle('open'); btn.classList.toggle('on'); }
+  } else if (a === 'replay') {
+    speak(messages[i].response);
+  } else if (a === 'translate') {
+    const el = document.getElementById(`tr-${i}`);
+    if (!el) return;
+    if (el.classList.contains('open')) { el.classList.remove('open'); btn.classList.remove('on'); return; }
+    if (el.textContent) { el.classList.add('open'); btn.classList.add('on'); return; }
+    btn.textContent = '...';
+    try {
+      const r = await fetch('/api/translate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: messages[i].response })
+      });
+      const d = await r.json();
+      el.textContent = d.translation || '...';
+    } catch { el.textContent = '...'; }
+    el.classList.add('open'); btn.textContent = 'translate'; btn.classList.add('on');
+  }
+});
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ============================================================
+// MIC — 获取一次，保持常驻
+// ============================================================
+async function ensureMic() {
+  if (micStream && micStream.active) return true;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micReady = true;
+    return true;
+  } catch (err) {
+    console.log('mic error:', err);
+    toast('无法访问麦克风');
+    return false;
+  }
+}
+
+// ============================================================
+// SPEECH RECOGNITION
+// ============================================================
+function startRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return false;
+
+  if (recognition) { try { recognition.abort(); } catch {} }
+  recognition = new SR();
+  recognition.lang = 'ja-JP';
+  recognition.interimResults = true;
+  recognition.continuous = true;
+  finalTranscript = ''; lastTranscript = '';
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finalTranscript += e.results[i][0].transcript;
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    live.textContent = finalTranscript + interim;
+  };
+  recognition.onerror = (e) => {
+    console.log('recog error:', e.error);
+  };
+  recognition.onend = () => {
+    if (isRecording) { try { recognition.start(); } catch {} }
+  };
+  try { recognition.start(); return true; } catch(err) { console.log('recog start fail:', err); return false; }
+}
+
+// ============================================================
+// VOICE ACTIVITY DETECTION — 用音量检测判断是否在说话
+// ============================================================
+let vadInterval = null;
+let silentSince = 0;
+let audioCtx = null, analyser = null, vadSource = null;
+const SILENCE_THRESHOLD = 0.012; // 低于这个音量算安静
+const SILENCE_DURATION = 6000;   // 安静6秒后发送，给足思考时间
+
+function startVAD() {
+  if (!micStream) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  // 断开旧的
+  if (vadSource) { try { vadSource.disconnect(); } catch {} }
+
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  vadSource = audioCtx.createMediaStreamSource(micStream);
+  vadSource.connect(analyser);
+
+  const data = new Float32Array(analyser.fftSize);
+  silentSince = 0;
+
+  vadInterval = setInterval(() => {
+    if (!isRecording) { stopVAD(); return; }
+
+    analyser.getFloatTimeDomainData(data);
+    // 计算 RMS 音量
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+
+    if (rms > SILENCE_THRESHOLD) {
+      // 有声音 → 重置
+      silentSince = 0;
+    } else {
+      // 安静
+      silentSince += 100; // 每100ms检测一次
+      // 必须有内容才自动发送（避免刚开始就发空的）
+      const hasContent = (finalTranscript || '').trim() || (live.textContent || '').trim();
+      if (hasContent && silentSince >= SILENCE_DURATION) {
+        stopRec(false);
+      }
+    }
+  }, 100);
+}
+
+function stopVAD() {
+  if (vadInterval) { clearInterval(vadInterval); vadInterval = null; }
+  if (vadSource) { try { vadSource.disconnect(); } catch {} vadSource = null; }
+  silentSince = 0;
+}
+
+// ============================================================
+// RECORDING
+// ============================================================
+async function startRec() {
+  if (isRecording) return;
+
+  ap.pause(); ap.currentTime = 0;
+  speechSynthesis.cancel();
+
+  // 解锁 audio + BGM (首次用户手势)
+  if (!audioUnlocked) {
+    try { await ap.play(); } catch {}
+    ap.pause(); ap.currentTime = 0;
+    audioUnlocked = true;
+    startBGM();
+  }
+
+  if (!(await ensureMic())) return;
+
+  // 浏览器识别做实时预览
+  startRecognition();
+
+  // MediaRecorder 录音，给 Whisper 用
+  audioChunks = [];
+  try {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try { mediaRecorder.stop(); } catch {}
+    }
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mediaRecorder = new MediaRecorder(micStream, { mimeType });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start(500); // 每500ms收集，确保有数据
+  } catch (err) { console.log('recorder err:', err); }
+
+  isRecording = true;
+  isBusy = false;
+  setState('listening');
+  live.textContent = '';
+
+  startVAD();
+}
+
+async function stopRec(silent) {
+  if (!isRecording) return;
+  isRecording = false;
+  stopVAD();
+
+  try { recognition?.abort(); } catch {}
+  recognition = null;
+
+  const browserText = (finalTranscript || '').trim() || live.textContent.trim();
+
+  if (silent) {
+    live.textContent = '';
+    try { mediaRecorder?.stop(); } catch {}
+    setState('idle');
+    return;
+  }
+
+  // 先请求最后一块数据，再停止
+  let audioBlob = null;
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    try { mediaRecorder.requestData(); } catch {} // flush 最后一块
+    audioBlob = await new Promise(resolve => {
+      const onStop = () => {
+        resolve(new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' }));
+      };
+      mediaRecorder.addEventListener('stop', onStop, { once: true });
+      mediaRecorder.stop();
+      setTimeout(() => resolve(new Blob(audioChunks, { type: 'audio/webm' })), 1500);
+    });
+  }
+
+  // 没有任何内容
+  if (!browserText && (!audioBlob || audioBlob.size < 500)) {
+    live.textContent = '';
+    setState('idle');
+    return;
+  }
+
+  // 发 Whisper 精确识别
+  live.textContent = '...';
+  let finalText = browserText; // fallback
+
+  if (audioBlob && audioBlob.size > 500) {
+    try {
+      const base64 = await blobToBase64(audioBlob);
+      if (base64) {
+        const res = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audio: base64 })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const wt = (data.text || '').trim();
+          if (wt) finalText = wt;
+        }
+      }
+    } catch (err) {
+      console.log('whisper err:', err);
+    }
+  }
+
+  live.textContent = '';
+  if (finalText) {
+    process(finalText);
+  } else {
+    setState('idle');
+  }
+}
+
+function blobToBase64(blob) {
+  return new Promise(resolve => {
+    const rd = new FileReader();
+    rd.onloadend = () => resolve(rd.result?.split(',')[1] || null);
+    rd.onerror = () => resolve(null);
+    rd.readAsDataURL(blob);
+  });
+}
+
+function tap() {
+  if (isRecording) {
+    stopRec(false);
+  } else {
+    if (aiState === 'speaking') { ap.pause(); ap.currentTime = 0; }
+    startRec();
+  }
+}
+
+// 释放 mic（结束会话时）
+function releaseMic() {
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  micReady = false;
+}
+
+// ============================================================
+// TEXT INPUT
+// ============================================================
+// ============================================================
+// PROCESS
+// ============================================================
+async function process(text) {
+  isBusy = true;
+  startTimer(); // 开始计时（首条消息触发）
+  const userMsg = { role: 'user', text };
+  messages.push(userMsg);
+  render();
+
+  setState('thinking');
+  showTyping();
+
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 25000);
+    const res = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, memories: getMemories() }), signal: ctrl.signal
+    });
+    clearTimeout(to);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'error');
+    const data = await res.json();
+
+    if (data.corrected) userMsg.corrected = data.corrected;
+    if (data.explanation) userMsg.explanation = data.explanation;
+    messages.push({ role: 'assistant', corrected: data.corrected || '', explanation: data.explanation || '', response: data.response || '' });
+
+    removeTyping(); render();
+
+    if (data.response) {
+      setState('speaking');
+      await speak(data.response);
+    }
+  } catch (err) {
+    removeTyping();
+    toast(err.name === 'AbortError' ? '请求超时' : err.message);
+  }
+
+  isBusy = false;
+
+  // Haru 说完后自动开始听（mic 已常驻，只需启动 recognition + VAD）
+  if (micReady) {
+    isRecording = true;
+    setState('listening');
+    live.textContent = '';
+    finalTranscript = ''; lastTranscript = '';
+    startRecognition();
+    startVAD();
+  } else {
+    setState('waiting');
+  }
+}
+
+// ============================================================
+// TYPING
+// ============================================================
+function showTyping() {
+  const el = document.createElement('div');
+  el.id = 'typ'; el.className = 'd-typing';
+  el.innerHTML = '<div class="wave"><span></span><span></span><span></span></div>';
+  dlg.appendChild(el); dlg.scrollTop = dlg.scrollHeight;
+}
+function removeTyping() { document.getElementById('typ')?.remove(); }
+
+// ============================================================
+// TTS — 关键修复：done() 只执行一次 + 基于时长的超时
+// ============================================================
+async function speak(text) {
+  if (!text) return;
+  ap.pause(); ap.currentTime = 0;
+  speechSynthesis.cancel();
+
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch('/api/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }), signal: ctrl.signal
+    });
+    clearTimeout(to);
+    if (!res.ok) throw new Error();
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    return new Promise(resolve => {
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        ap.onended = null;
+        ap.onerror = null;
+        ap.ontimeupdate = null;
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+
+      ap.onended = done;
+      ap.onerror = done;
+
+      // 手机 backup: 用 timeupdate 检测是否播完
+      ap.ontimeupdate = () => {
+        if (ap.duration && ap.currentTime >= ap.duration - 0.1) done();
+      };
+
+      ap.src = url;
+      ap.play().then(() => {
+        // 基于实际时长设超时，多加 2 秒余量
+        const dur = ap.duration;
+        if (dur && isFinite(dur)) {
+          setTimeout(done, (dur + 2) * 1000);
+        } else {
+          setTimeout(done, 15000);
+        }
+      }).catch(done);
+    });
+  } catch {
+    return new Promise(resolve => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP'; u.onend = resolve; u.onerror = resolve;
+      speechSynthesis.speak(u);
+      setTimeout(resolve, 10000);
+    });
+  }
+}
+
+// ============================================================
+// SESSION TIMER
+// ============================================================
+let sessionStart = null;
+let timerInterval = null;
+
+function startTimer() {
+  if (sessionStart) return;
+  sessionStart = Date.now();
+  const timerEl = document.getElementById('timer');
+  timerEl.classList.add('on');
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    timerEl.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  document.getElementById('timer').classList.remove('on');
+  const duration = sessionStart ? Math.floor((Date.now() - sessionStart) / 1000) : 0;
+  sessionStart = null;
+  return duration;
+}
+
+// ============================================================
+// SAVED SESSIONS (localStorage: haruSessions)
+// ============================================================
+function getSessions() {
+  return JSON.parse(localStorage.getItem('haruSessions') || '[]');
+}
+function saveSessions(sessions) {
+  localStorage.setItem('haruSessions', JSON.stringify(sessions));
+}
+function getMemories() {
+  return JSON.parse(localStorage.getItem('haruMemories') || '[]');
+}
+function saveMemories(mems) {
+  localStorage.setItem('haruMemories', JSON.stringify(mems));
+}
+async function extractAndSaveMemories(msgs) {
+  try {
+    const existing = getMemories();
+    const res = await fetch('/api/extract-memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: msgs, existingMemories: existing })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.memories && data.memories.length > 0) {
+        const updated = [...existing, ...data.memories];
+        // 超过500条时，压缩旧记忆
+        if (updated.length > 500) {
+          compressMemories(updated);
+        } else {
+          saveMemories(updated);
+        }
+      }
+    }
+  } catch (err) { console.log('memory extraction err:', err); }
+}
+async function compressMemories(mems) {
+  // 保留最近200条不动，把前面的压缩成摘要
+  const recent = mems.slice(-200);
+  const old = mems.slice(0, -200);
+  try {
+    const res = await fetch('/api/compress-memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memories: old })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      saveMemories([...data.compressed, ...recent]);
+    } else {
+      // 压缩失败就保留最近 500 条
+      saveMemories(mems.slice(-500));
+    }
+  } catch {
+    saveMemories(mems.slice(-500));
+  }
+}
+
+function getTotalMinutes() {
+  const sessions = getSessions();
+  const totalSec = sessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+  return Math.round(totalSec / 60);
+}
+
+// ============================================================
+// END SESSION
+// ============================================================
+let pendingDuration = 0; // 暂存时长，dialog 确认后用
+
+function endSession() {
+  if (!messages.length) return;
+  // 停止录音
+  if (isRecording) stopRec(true);
+  // 计算时长但先不清除 timer
+  pendingDuration = sessionStart ? Math.floor((Date.now() - sessionStart) / 1000) : 0;
+  const m = Math.floor(pendingDuration / 60);
+  const s = pendingDuration % 60;
+  document.getElementById('dialogSub').textContent =
+    `This session: ${m}m${s}s · ${messages.length} messages. Save for review?`;
+  document.getElementById('endDialog').classList.add('open');
+}
+
+async function saveAndEnd() {
+  stopTimer();
+  releaseMic();
+  const savedMessages = [...messages];
+  const sessions = getSessions();
+  sessions.unshift({
+    id: Date.now(),
+    date: new Date().toISOString(),
+    duration: pendingDuration,
+    msgCount: messages.length,
+    messages: savedMessages
+  });
+  saveSessions(sessions);
+  updateTotalStats(pendingDuration);
+  messages = [];
+  localStorage.removeItem('haruMsg2');
+  render(); setState('idle');
+  document.getElementById('endDialog').classList.remove('open');
+  toast('saving memories...');
+  // 后台提取记忆
+  await extractAndSaveMemories(savedMessages);
+  toast('session saved');
+}
+
+function discardAndEnd() {
+  stopTimer();
+  releaseMic();
+  messages = [];
+  localStorage.removeItem('haruMsg2');
+  render(); setState('idle');
+  document.getElementById('endDialog').classList.remove('open');
+}
+
+function cancelEnd() {
+  // 恢复计时（sessionStart 没被清除）
+  document.getElementById('endDialog').classList.remove('open');
+}
+
+function updateTotalStats(addSec) {
+  const total = parseInt(localStorage.getItem('haruTotalSec') || '0') + addSec;
+  localStorage.setItem('haruTotalSec', String(total));
+}
+
+// ============================================================
+// HISTORY
+// ============================================================
+function openHistory() {
+  const body = document.getElementById('histBody');
+  body.innerHTML = '';
+
+  const sessions = getSessions();
+  const totalMin = getTotalMinutes();
+  const totalFromStorage = Math.round(parseInt(localStorage.getItem('haruTotalSec') || '0') / 60);
+  const displayMin = Math.max(totalMin, totalFromStorage);
+
+  // Stats
+  body.innerHTML = `
+    <div class="stats">
+      <div class="stat-item">
+        <div class="stat-val">${sessions.length}</div>
+        <div class="stat-label">sessions</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val">${displayMin}</div>
+        <div class="stat-label">minutes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val">${sessions.reduce((s, x) => s + x.msgCount, 0)}</div>
+        <div class="stat-label">messages</div>
+      </div>
+    </div>
+  `;
+
+  // 记忆区
+  const mems = getMemories();
+  if (mems.length) {
+    body.innerHTML += `
+      <div class="h-session" style="border-color:rgba(255,176,136,0.1);margin-bottom:16px">
+        <div class="h-session-head" data-si="mem">
+          <div class="h-session-info">
+            <div class="h-session-date">Haru's Memories</div>
+            <div class="h-session-stats">${mems.length} items</div>
+          </div>
+        </div>
+        <div class="h-session-body" id="hsb-mem">
+          ${mems.map(m => `<div style="color:rgba(255,200,170,0.7);font-size:13px;padding:4px 0;font-weight:300">· ${esc(m)}</div>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  if (!sessions.length) {
+    body.innerHTML += '<div style="color:rgba(255,255,255,0.2);font-size:13px;padding:30px;text-align:center">no saved sessions</div>';
+  } else {
+    sessions.forEach((sess, si) => {
+      const d = new Date(sess.date);
+      const dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const durMin = Math.floor((sess.duration || 0) / 60);
+      const durSec = (sess.duration || 0) % 60;
+      const preview = sess.messages.find(m => m.role === 'user')?.text || '...';
+
+      const container = document.createElement('div');
+      container.className = 'h-session';
+      container.innerHTML = `
+        <div class="h-session-head" data-si="${si}">
+          <div class="h-session-info">
+            <div class="h-session-date">${dateStr}</div>
+            <div class="h-session-stats">${durMin}m${durSec}s · ${sess.msgCount} msgs</div>
+            <div class="h-session-preview">${esc(preview)}</div>
+          </div>
+          <button class="h-session-del" data-del="${si}">delete</button>
+        </div>
+        <div class="h-session-body" id="hsb-${si}">
+          ${sess.messages.map(m => `
+            <div class="h-msg">
+              <div class="h-role">${m.role === 'user' ? 'you' : 'haru'}</div>
+              <div class="h-text">${esc(m.role === 'user' ? m.text : (m.response || ''))}</div>
+              ${m.corrected && m.corrected !== m.text ? `<div style="color:rgba(255,180,150,0.8);font-size:14px;font-weight:300;margin-top:3px">→ ${esc(m.corrected)}</div>` : ''}
+              ${m.explanation ? `<div style="color:rgba(255,200,170,0.6);font-size:13px;font-weight:300;margin-top:2px">${esc(m.explanation)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      body.appendChild(container);
+    });
+  }
+
+  document.getElementById('histPanel').classList.add('open');
+}
+
+// 事件委托：展开/删除 session
+document.getElementById('histBody').addEventListener('click', (e) => {
+  // 删除
+  const delBtn = e.target.closest('[data-del]');
+  if (delBtn) {
+    e.stopPropagation();
+    const si = parseInt(delBtn.dataset.del);
+    const sessions = getSessions();
+    if (sessions[si]) {
+      // 减去时长
+      const removed = sessions.splice(si, 1)[0];
+      const total = Math.max(0, parseInt(localStorage.getItem('haruTotalSec') || '0') - (removed.duration || 0));
+      localStorage.setItem('haruTotalSec', String(total));
+      saveSessions(sessions);
+      openHistory(); // 刷新
+    }
+    return;
+  }
+  // 展开/折叠
+  const head = e.target.closest('.h-session-head');
+  if (head) {
+    const si = head.dataset.si;
+    const body = document.getElementById(`hsb-${si}`);
+    if (body) body.classList.toggle('open');
+  }
+});
+
+function closeHistory() { document.getElementById('histPanel').classList.remove('open'); }
+
+// ============================================================
+// UTILS
+// ============================================================
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); tap(); }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+render();
+if (messages.length) { setState('waiting'); startTimer(); }
+</script>
+</body>
+</html>
