@@ -198,8 +198,29 @@ app.post('/api/transcribe', async (req, res) => {
     }
 
     const data = await whisperRes.json();
-    console.log('🎤 Whisper:', data.text);
-    res.json({ text: data.text || '' });
+    const raw = data.text || '';
+    console.log('🎤 Whisper raw:', raw);
+
+    // 用 Claude 快速加标点和断句
+    if (raw.length > 5) {
+      try {
+        const fixRes = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          messages: [{
+            role: 'user',
+            content: `以下は音声認識の結果です。句読点（、。）や間（...）を適切に追加して、自然な話し言葉にしてください。内容は一切変えないでください。結果だけ出力：\n${raw}`
+          }]
+        });
+        const fixed = fixRes.content[0].text.trim();
+        console.log('🎤 Fixed:', fixed);
+        res.json({ text: fixed });
+      } catch {
+        res.json({ text: raw });
+      }
+    } else {
+      res.json({ text: raw });
+    }
   } catch (err) {
     console.error('Transcribe error:', err.message);
     res.status(500).json({ error: '语音识别失败' });
