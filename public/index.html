@@ -1193,7 +1193,10 @@ function openHistory() {
           </div>
         </div>
         <div class="h-session-body" id="hsb-mem">
-          ${mems.map(m => `<div style="color:rgba(255,200,170,0.7);font-size:13px;padding:4px 0;font-weight:300">· ${esc(m)}</div>`).join('')}
+          ${mems.map((m, mi) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.02)">
+            <span style="color:rgba(255,200,170,0.7);font-size:13px;font-weight:300;flex:1">· ${esc(m)}</span>
+            <button data-delmem="${mi}" style="background:none;border:none;color:rgba(255,80,80,0.3);font-size:14px;cursor:pointer;padding:2px 8px;flex-shrink:0">×</button>
+          </div>`).join('')}
         </div>
       </div>
     `;
@@ -1240,7 +1243,18 @@ function openHistory() {
 
 // 事件委托：展开/删除 session
 document.getElementById('histBody').addEventListener('click', (e) => {
-  // 删除
+  // 删除单条记忆
+  const memBtn = e.target.closest('[data-delmem]');
+  if (memBtn) {
+    e.stopPropagation();
+    const mi = parseInt(memBtn.dataset.delmem);
+    const mems = getMemories();
+    mems.splice(mi, 1);
+    saveMemories(mems);
+    openHistory();
+    return;
+  }
+  // 删除 session
   const delBtn = e.target.closest('[data-del]');
   if (delBtn) {
     e.stopPropagation();
