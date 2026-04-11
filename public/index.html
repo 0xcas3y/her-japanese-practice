@@ -1224,7 +1224,16 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s; re
 async function ensureMic() {
   if (micStream && micStream.active) return true;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // 显式开启 echo cancellation + 噪音抑制 + 自动增益
+    // 关键：echoCancellation 可以消除扬声器播放的 Haru 自己的声音回到麦克风
+    // 否则 Whisper 会把 Haru 的 TTS 尾音当成用户说的话
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
     micReady = true;
     return true;
   } catch (err) {
@@ -1660,6 +1669,11 @@ async function process(text) {
 
   // Haru 说完之后自动开始听（除非会话已结束）
   if (micReady && !sessionEnded) {
+    // TTS 结束到真正静默之间有约 500-800ms 的扬声器尾音
+    // 立即开始录音会把 Haru 自己的声音录进去，被 Whisper 当成用户说的
+    // 等 800ms 再开始，避免音频污染
+    await new Promise(r => setTimeout(r, 800));
+
     // 先确保麦克风流还活着 —— TTS 播放期间 iOS 有时会释放它
     const micOk = await ensureMic();
     if (!micOk) {
