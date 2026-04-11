@@ -1371,7 +1371,7 @@ let maxRMS = 0, speechFrames = 0; // track whether any real speech happened
 const SILENCE_THRESHOLD = 0.012; // 低于这个音量算安静
 const SPEECH_RMS_MIN = 0.018;    // 要有这个音量才算"真的说过话"
 const SPEECH_FRAMES_MIN = 3;     // 至少有3帧 ≥ 300ms 的有声内容
-const SILENCE_DURATION = 6000;   // 安静6秒后发送，给足思考时间
+const SILENCE_DURATION = 2500;   // 静默 2.5 秒后自动发送（自然停顿触发）
 
 function startVAD() {
   if (!micStream) return;
@@ -1418,6 +1418,7 @@ function startVAD() {
       silentSince += 100; // 每100ms检测一次
       // 必须有内容才自动发送 —— 用 hadRealSpeech 判断（不再依赖 live.textContent 因为它现在只是动效）
       if (hadRealSpeech() && silentSince >= SILENCE_DURATION) {
+        console.log('⏹  VAD silence timeout → auto stopRec');
         stopRec(false);
       }
     }
