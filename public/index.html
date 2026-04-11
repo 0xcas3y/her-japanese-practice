@@ -811,6 +811,7 @@ async function stopRec(silent) {
   }
 
   // 发 Whisper 精确识别
+  console.log('🎤 blob:', audioBlob?.size, 'chunks:', audioChunks.length, 'browser:', browserText);
   live.textContent = '...';
   let finalText = browserText; // fallback
 
@@ -826,7 +827,10 @@ async function stopRec(silent) {
         if (res.ok) {
           const data = await res.json();
           const wt = (data.text || '').trim();
+          console.log('✅ Whisper result:', wt);
           if (wt) finalText = wt;
+        } else {
+          console.log('❌ Whisper failed:', res.status);
         }
       }
     } catch (err) {
@@ -1224,14 +1228,21 @@ function openHistory() {
           <button class="h-session-del" data-del="${si}">delete</button>
         </div>
         <div class="h-session-body" id="hsb-${si}">
-          ${sess.messages.map(m => `
-            <div class="h-msg">
-              <div class="h-role">${m.role === 'user' ? 'you' : 'haru'}</div>
-              <div class="h-text">${esc(m.role === 'user' ? m.text : (m.response || ''))}</div>
-              ${m.corrected && m.corrected !== m.text ? `<div style="color:rgba(255,180,150,0.8);font-size:14px;font-weight:300;margin-top:3px">→ ${esc(m.corrected)}</div>` : ''}
-              ${m.explanation ? `<div style="color:rgba(255,200,170,0.6);font-size:13px;font-weight:300;margin-top:2px">${esc(m.explanation)}</div>` : ''}
-            </div>
-          `).join('')}
+          ${sess.messages.map(m => {
+            if (m.role === 'user') {
+              return `<div class="h-msg">
+                <div class="h-role">you</div>
+                <div class="h-text">${esc(m.text)}</div>
+                ${m.corrected && m.corrected !== m.text ? `<div style="color:rgba(255,180,150,0.8);font-size:14px;font-weight:300;margin-top:3px">→ ${esc(m.corrected)}</div>` : ''}
+                ${m.explanation ? `<div style="color:rgba(255,200,170,0.6);font-size:13px;font-weight:300;margin-top:2px">${esc(m.explanation)}</div>` : ''}
+              </div>`;
+            } else {
+              return `<div class="h-msg">
+                <div class="h-role">haru</div>
+                <div class="h-text">${esc(m.response || '')}</div>
+              </div>`;
+            }
+          }).join('')}
         </div>
       `;
       body.appendChild(container);
