@@ -692,12 +692,11 @@ class Pt {
       if (this.y < 0) this.y = canvas.height;
       if (this.y > canvas.height) this.y = 0;
     } else if (aiState === 'listening') {
-      // 退到后层：漂移极慢、整体变暗、随呼吸渐变
-      this.x += this.vx * 0.15;
-      this.y += this.vy * 0.15;
-      const breath = Math.sin(t * 0.0009 + this.ph * 0.3) * 0.1;
-      this.a = this.ba * 0.45 + twinkle * 0.4 + breath;
-      this.sz = this.baseSz * 0.85;
+      // listening 用和 idle 同样的漂移 + 闪烁节奏，只是整体变暗
+      this.x += this.vx + Math.sin(this.ph) * 0.04;
+      this.y += this.vy + Math.cos(this.ph) * 0.04;
+      this.a = this.ba * 0.6 + twinkle * 0.7;
+      this.sz = this.baseSz * 0.9 + Math.sin(this.ph * 1.5) * 0.15;
       if (this.x < 0) this.x = canvas.width;
       if (this.x > canvas.width) this.x = 0;
       if (this.y < 0) this.y = canvas.height;
@@ -999,14 +998,18 @@ class GalaxyPt {
     this.phase += this.speed;
 
     if (aiState === 'listening') {
-      // 退后一层：非常慢的旋转、变暗、缩小，渐变呼吸
-      this.orbitAngle += 0.0005; // 极慢漂移
-      const breath = Math.sin(t * 0.0009) * 0.012; // ~7s 呼吸
-      this.x = 0.5 + Math.cos(this.orbitAngle) * (this.orbitR * 1.3 + breath);
-      this.y = 0.42 + Math.sin(this.orbitAngle) * (this.orbitR * 0.7 + breath * 0.6);
-      // 暗淡 + 同步呼吸的 alpha 起伏
-      this.alpha = this.baseAlpha * 0.45 + Math.sin(t * 0.0009 + this.phase * 0.2) * 0.08;
-      this.size = this.baseSize * 0.75;
+      // listening 用和 idle 完全相同的运动节奏（旋转 + 呼吸 + 摆动），
+      // 只是整体 alpha 和 size 降一级 —— 切换时没有速度变化，只有亮度渐变
+      this.orbitAngle += 0.00025 + this.orbitR * 0.0001; // 同 idle
+      const breath = (Math.sin(t * 0.001) + 1) / 2;      // 同 idle 呼吸
+      const breathR = 1 + breath * 0.08;
+      const wobbleX = Math.sin(this.phase) * 0.015;
+      const wobbleY = Math.cos(this.phase * 0.8) * 0.012;
+      this.x = 0.5 + Math.cos(this.orbitAngle) * this.orbitR * 1.35 * breathR + wobbleX;
+      this.y = 0.42 + Math.sin(this.orbitAngle) * this.orbitR * 0.72 * breathR + wobbleY;
+      // listening 的差异：alpha 少 30%、size 少 15%，让它"退后一层"但不突兀
+      this.alpha = this.baseAlpha * (0.5 + breath * 0.2);
+      this.size = this.baseSize * (0.82 + breath * 0.1);
     } else if (aiState === 'speaking') {
       // 缓慢呼吸 + 柔和波动，~5秒一个周期
       this.orbitAngle += 0.0015;
@@ -1075,15 +1078,17 @@ function drawSoul(t) {
   if (aiState === 'speaking') {
     intensity = 1 + Math.sin(t * 0.0012) * 0.35; // ~5s 呼吸
     breathScale = 1 + Math.sin(t * 0.0012) * 0.05;
-  } else if (aiState === 'listening') {
-    const b = (Math.sin(t * 0.0009) + 1) / 2;
-    intensity = 0.55 + b * 0.85;
-    breathScale = 0.9 + b * 0.15;
   } else {
-    // idle: 更明显的呼吸 (6s 周期) + 微旋转缩放
-    const b = (Math.sin(t * 0.001) + 1) / 2; // 0..1
-    intensity = 0.45 + b * 0.55; // 0.45 → 1.0
+    // listening 和 idle 共用同一个时基和呼吸率 —— 只是 listening 暗一些
+    // 切换时观众看到的是 intensity 从 idle 的 [0.45..1.0] 平滑变到 listening 的 [0.35..0.8]
+    // breathScale 保持不变，没有跳变感
+    const b = (Math.sin(t * 0.001) + 1) / 2; // 同时基，6s 呼吸
     breathScale = 0.92 + b * 0.12;
+    if (aiState === 'listening') {
+      intensity = 0.35 + b * 0.45;           // 稍暗版
+    } else {
+      intensity = 0.45 + b * 0.55;
+    }
   }
 
   // Layer 1 — 大片紫蓝水墨（外层晕染）
