@@ -1706,6 +1706,31 @@ function hadRealSpeech() {
 // RECORDING
 // ============================================================
 // 开启一个全新的 MediaRecorder —— 每一轮录音必须 reset
+// 用 Web Audio 给 micStream 套一个 3x GainNode，产物喂给 MediaRecorder
+// 这是 stable 之外唯一新增的东西 —— 目的是补偿你麦克风偏低的音量
+let _recAudioCtx = null;
+let _recGainSource = null;
+let _recGainNode = null;
+let _recGainDest = null;
+
+function buildGainedStream(src) {
+  try {
+    if (!_recAudioCtx) _recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_recAudioCtx.state === 'suspended') _recAudioCtx.resume();
+    if (_recGainSource) { try { _recGainSource.disconnect(); } catch {} }
+    if (_recGainNode) { try { _recGainNode.disconnect(); } catch {} }
+    _recGainSource = _recAudioCtx.createMediaStreamSource(src);
+    _recGainNode = _recAudioCtx.createGain();
+    _recGainNode.gain.value = 3.0;  // 3x
+    _recGainDest = _recAudioCtx.createMediaStreamDestination();
+    _recGainSource.connect(_recGainNode).connect(_recGainDest);
+    return _recGainDest.stream;
+  } catch (err) {
+    console.warn('⚠️  gain pipeline failed, using raw micStream:', err);
+    return src;
+  }
+}
+
 function startMediaRecorder() {
   console.log('🎧 startMediaRecorder: prev state =', mediaRecorder?.state,
               '| micStream active =', micStream?.active,
@@ -1728,19 +1753,18 @@ function startMediaRecorder() {
   try {
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus' : 'audio/webm';
-    // 关键性能优化：限制 Opus 码率到 32kbps（语音清晰，体积 1/4-1/6）
-    // 默认码率可能高达 128-256kbps，对语音是浪费
-    // 32kbps × 10s = 40KB (vs 320KB with 256kbps default)
-    mediaRecorder = new MediaRecorder(micStream, {
+    // 给 MediaRecorder 送 3x 增益后的 stream（VAD 仍然看原始 micStream，不受影响）
+    const recStream = buildGainedStream(micStream);
+    mediaRecorder = new MediaRecorder(recStream, {
       mimeType,
-      audioBitsPerSecond: 32000  // 32 kbps, speech-optimized
+      audioBitsPerSecond: 32000  // 32 kbps, speech-optimized, stable 值
     });
     mediaRecorder.ondataavailable = e => {
       if (e.data.size > 0) audioChunks.push(e.data);
     };
     mediaRecorder.onerror = e => console.error('❌ mediaRecorder error:', e);
     mediaRecorder.start(500);
-    console.log('🎧 new recorder ready: state =', mediaRecorder.state, 'mime =', mimeType, '@ 32kbps');
+    console.log('🎧 new recorder ready: state =', mediaRecorder.state, 'mime =', mimeType, '@ 32kbps, gain=3x');
     return true;
   } catch (err) {
     console.error('❌ mediaRecorder creation failed:', err);
