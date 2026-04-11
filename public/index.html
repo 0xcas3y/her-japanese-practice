@@ -122,19 +122,50 @@
       50%{opacity:1;transform:scale(1.04);text-shadow:0 0 20px rgba(150,180,255,0.55);}
     }
 
-    /* ===== Dialogue area ===== */
+    /* ===== Dialogue area — 极简，只显示当前一轮对话 ===== */
     .dialogue{
       position:relative;z-index:3;
-      width:100%;max-width:520px;max-height:40vh;
+      width:100%;max-width:560px;
       display:flex;flex-direction:column;justify-content:flex-end;
-      padding:20px 0 10px;overflow-y:auto;
-      mask-image:linear-gradient(to bottom,transparent,black 20px,black calc(100% - 20px),transparent);
-      -webkit-mask-image:linear-gradient(to bottom,transparent,black 20px,black calc(100% - 20px),transparent);
+      gap:14px;padding:24px 0 10px;
+      /* 不再限高、不再滚动 — 气泡自由生长 */
     }
 
     /* Messages - semi-transparent dark glassmorphic bubbles */
-    .d-msg{padding:10px 0;animation:text-fade 0.8s ease-out;display:flex;flex-direction:column;}
-    @keyframes text-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .d-msg{padding:8px 0;animation:text-fade 0.9s ease-out;display:flex;flex-direction:column;}
+    @keyframes text-fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+    /* ===== 消散动画：Haru 气泡飞向上方星空 + 粒子化 ===== */
+    .d-msg.dissolving .d-text{
+      animation:haru-dissolve 2.4s cubic-bezier(.25,.46,.45,.94) forwards;
+      pointer-events:none;
+    }
+    .d-msg.dissolving .d-actions{opacity:0;transition:opacity 0.4s;}
+    .d-you.dissolving .d-text{
+      animation:user-fade 1.8s cubic-bezier(.25,.46,.45,.94) forwards;
+    }
+    @keyframes haru-dissolve{
+      0%   {transform:translateY(0) scale(1);opacity:1;filter:blur(0) brightness(1);}
+      25%  {transform:translateY(-30px) scale(0.99);opacity:0.92;filter:blur(0.5px) brightness(1.25);}
+      60%  {transform:translateY(-150px) scale(0.9);opacity:0.55;filter:blur(4px) brightness(1.35);}
+      100% {transform:translateY(-360px) scale(0.72);opacity:0;filter:blur(14px) brightness(1.5);}
+    }
+    @keyframes user-fade{
+      0%   {transform:translateY(0) translateX(0) scale(1);opacity:1;filter:blur(0);}
+      100% {transform:translateY(-40px) translateX(20px) scale(0.92);opacity:0;filter:blur(8px);}
+    }
+
+    /* ===== 打字时的发光呼吸（让文字有"在被念出"的感觉） ===== */
+    .d-msg.typing .d-text{
+      text-shadow:
+        0 0 8px rgba(200,180,255,0.25),
+        0 0 16px rgba(140,100,220,0.15);
+      animation:typing-glow 2s ease-in-out infinite;
+    }
+    @keyframes typing-glow{
+      0%,100%{text-shadow:0 0 8px rgba(200,180,255,0.22),0 0 14px rgba(140,100,220,0.12);}
+      50%{text-shadow:0 0 14px rgba(220,200,255,0.45),0 0 26px rgba(180,140,255,0.22);}
+    }
 
     /* User bubble: 高透磨砂玻璃，右对齐，冷色调 */
     .d-you{align-items:flex-end;}
@@ -611,6 +642,76 @@ class Pt {
 
 for (let i = 0; i < N; i++) pts.push(new Pt());
 
+// ========== 消散粒子系统（气泡 → 星空） ==========
+const dissolveParticles = [];
+
+class DissolveParticle {
+  constructor(x, y, style) {
+    this.x = x;
+    this.y = y;
+    // 向上 + 轻微扩散
+    const spread = (Math.random() - 0.5) * 2.4;
+    this.vx = spread;
+    this.vy = -1.2 - Math.random() * 2.5;
+    this.ax = 0;
+    this.ay = -0.018; // 持续向上吸引 → 像被星空吸走
+    this.life = 1;
+    this.decay = 0.006 + Math.random() * 0.006;
+    this.size = 0.6 + Math.random() * 1.6;
+    this.phase = Math.random() * Math.PI * 2;
+    // 颜色：cosmic = 紫蓝白金混合；faint = 偏冷偏淡
+    if (style === 'cosmic') {
+      const roll = Math.random();
+      this.col = roll < 0.4 ? '220,230,255'
+               : roll < 0.65 ? '180,150,255'
+               : roll < 0.85 ? '255,220,170'
+               : '140,180,255';
+    } else {
+      // user bubble: 冷色淡粒子
+      this.col = Math.random() < 0.5 ? '180,210,255' : '220,230,255';
+    }
+  }
+  update() {
+    this.vx += this.ax;
+    this.vy += this.ay;
+    this.x += this.vx + Math.sin(this.phase) * 0.3;
+    this.y += this.vy;
+    this.phase += 0.08;
+    this.life -= this.decay;
+  }
+  draw() {
+    if (this.life <= 0) return;
+    const a = Math.max(0, this.life);
+    const s = this.size * (0.5 + a * 0.8);
+    // halo
+    ctx.fillStyle = `rgba(${this.col},${a * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, s * 2.6, 0, Math.PI * 2);
+    ctx.fill();
+    // core
+    ctx.fillStyle = `rgba(${this.col},${a * 0.95})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  get dead() {
+    return this.life <= 0 || this.y < -60;
+  }
+}
+
+function spawnDissolveParticles(el, style) {
+  const rect = el.getBoundingClientRect();
+  // 粒子数量根据气泡面积决定，但有上下限
+  const area = rect.width * rect.height;
+  const count = Math.min(180, Math.max(50, Math.floor(area / 280)));
+  for (let i = 0; i < count; i++) {
+    // 在气泡矩形内随机撒点
+    const x = rect.left + Math.random() * rect.width;
+    const y = rect.top + Math.random() * rect.height;
+    dissolveParticles.push(new DissolveParticle(x, y, style));
+  }
+}
+
 // ========== 流星系统 ==========
 const shootingStars = [];
 let nextShootingStar = 2000; // 第一颗 2 秒后出现
@@ -693,6 +794,13 @@ function drawPts(t) {
     shootingStars[i].update();
     shootingStars[i].draw();
     if (shootingStars[i].dead) shootingStars.splice(i, 1);
+  }
+
+  // 消散粒子（Haru 气泡飞向星空）
+  for (let i = dissolveParticles.length - 1; i >= 0; i--) {
+    dissolveParticles[i].update();
+    dissolveParticles[i].draw();
+    if (dissolveParticles[i].dead) dissolveParticles.splice(i, 1);
   }
 
   // Constellation lines only when AI is speaking (subtle network effect)
@@ -977,44 +1085,58 @@ function setState(s) {
 }
 
 // ============================================================
-// RENDER
+// RENDER — 极简：主视图只显示当前一轮（最新 user + 当前 Haru）
 // ============================================================
-function render() {
+// 当前轮：{ userIdx, haruIdx } —— 指向 messages 数组里的索引
+// 历史记录仍然保留在 messages 里，通过 history overlay 查看
+let currentTurn = { userIdx: null, haruIdx: null };
+
+function buildUserBubble(msg, idx) {
+  const el = document.createElement('div');
+  el.className = 'd-msg d-you';
+  const hasFix = msg.corrected && msg.corrected !== msg.text;
+  const hasNative = msg.native_casual && msg.native_casual.length > 0;
+  const hasExp = !!msg.explanation;
+  const hasPractice = !!msg.practice;
+  const hasCorrection = hasFix || hasNative || hasExp || hasPractice;
+  el.innerHTML = `<div class="d-text">${esc(msg.text)}</div>` +
+    (hasCorrection ? `
+      <div class="d-actions"><button class="d-act" data-a="detail" data-i="${idx}">correction</button></div>
+      <div class="d-detail" id="dt-${idx}">
+        ${hasFix ? `<div class="d-correction">→ ${esc(msg.corrected)}</div>` : ''}
+        ${hasNative ? `<div style="margin-top:6px;color:rgba(150,220,255,0.7);font-size:13px;font-weight:300">${msg.native_casual.map(n => '💬 ' + esc(n)).join('<br>')}</div>` : ''}
+        ${hasExp ? `<div class="d-explanation">${esc(msg.explanation)}</div>` : ''}
+        ${hasPractice ? `<div style="margin-top:6px;color:rgba(255,200,150,0.6);font-size:12px;font-weight:300">✏️ ${esc(msg.practice)}</div>` : ''}
+      </div>` : '');
+  return el;
+}
+
+function buildHaruBubble(msg, idx) {
+  const el = document.createElement('div');
+  el.className = 'd-msg d-haru';
+  el.innerHTML = `
+    <div class="d-text">${esc(msg.response)}</div>
+    <div class="d-actions">
+      <button class="d-act" data-a="replay" data-i="${idx}">replay</button>
+      <button class="d-act" data-a="translate" data-i="${idx}">translate</button>
+    </div>
+    <div class="d-trans" id="tr-${idx}"></div>`;
+  return el;
+}
+
+function renderTurn() {
   dlg.innerHTML = '';
-  messages.forEach((msg, idx) => {
-    const el = document.createElement('div');
-    el.className = 'd-msg';
-    if (msg.role === 'user') {
-      el.classList.add('d-you');
-      const hasFix = msg.corrected && msg.corrected !== msg.text;
-      const hasNative = msg.native_casual && msg.native_casual.length > 0;
-      const hasExp = !!msg.explanation;
-      const hasPractice = !!msg.practice;
-      const hasCorrection = hasFix || hasNative || hasExp || hasPractice;
-      el.innerHTML = `<div class="d-text">${esc(msg.text)}</div>` +
-        (hasCorrection ? `
-          <div class="d-actions"><button class="d-act" data-a="detail" data-i="${idx}">correction</button></div>
-          <div class="d-detail" id="dt-${idx}">
-            ${hasFix ? `<div class="d-correction">→ ${esc(msg.corrected)}</div>` : ''}
-            ${hasNative ? `<div style="margin-top:6px;color:rgba(150,220,255,0.7);font-size:13px;font-weight:300">${msg.native_casual.map(n => '💬 ' + esc(n)).join('<br>')}</div>` : ''}
-            ${hasExp ? `<div class="d-explanation">${esc(msg.explanation)}</div>` : ''}
-            ${hasPractice ? `<div style="margin-top:6px;color:rgba(255,200,150,0.6);font-size:12px;font-weight:300">✏️ ${esc(msg.practice)}</div>` : ''}
-          </div>` : '');
-    } else {
-      el.classList.add('d-haru');
-      el.innerHTML = `
-        <div class="d-text">${esc(msg.response)}</div>
-        <div class="d-actions">
-          <button class="d-act" data-a="replay" data-i="${idx}">replay</button>
-          <button class="d-act" data-a="translate" data-i="${idx}">translate</button>
-        </div>
-        <div class="d-trans" id="tr-${idx}"></div>`;
-    }
-    dlg.appendChild(el);
-  });
-  dlg.scrollTop = dlg.scrollHeight;
+  if (currentTurn.userIdx != null && messages[currentTurn.userIdx]) {
+    dlg.appendChild(buildUserBubble(messages[currentTurn.userIdx], currentTurn.userIdx));
+  }
+  if (currentTurn.haruIdx != null && messages[currentTurn.haruIdx]) {
+    dlg.appendChild(buildHaruBubble(messages[currentTurn.haruIdx], currentTurn.haruIdx));
+  }
   localStorage.setItem('haruMsg2', JSON.stringify(messages));
 }
+
+// 兼容旧调用
+function render() { renderTurn(); }
 
 dlg.addEventListener('click', async (e) => {
   const btn = e.target.closest('.d-act');
@@ -1391,10 +1513,13 @@ function releaseMic() {
 // ============================================================
 async function process(text) {
   isBusy = true;
-  startTimer(); // 开始计时（首条消息触发）
+  startTimer();
+
+  // 推入用户消息，并把它作为当前轮的 user
   const userMsg = { role: 'user', text };
   messages.push(userMsg);
-  render();
+  currentTurn = { userIdx: messages.length - 1, haruIdx: null };
+  renderTurn();
 
   setState('thinking');
   showTyping();
@@ -1414,31 +1539,44 @@ async function process(text) {
     if (data.explanation) userMsg.explanation = data.explanation;
     if (data.native_casual) userMsg.native_casual = data.native_casual;
     if (data.practice) userMsg.practice = data.practice;
-    messages.push({ role: 'assistant', response: data.response || '' });
 
-    removeTyping(); render();
+    const haruMsg = { role: 'assistant', response: data.response || '' };
+    messages.push(haruMsg);
+    currentTurn.haruIdx = messages.length - 1;
+
+    removeTyping();
+    // 直接追加 Haru 气泡，避免重新渲染 user bubble（不让入场动画重播）
+    const haruBubble = buildHaruBubble(haruMsg, currentTurn.haruIdx);
+    dlg.appendChild(haruBubble);
+    localStorage.setItem('haruMsg2', JSON.stringify(messages));
 
     if (data.response) {
       setState('speaking');
-      // 打字机式逐字显示 + 跟读滚动：直接操作刚 render 的 DOM 元素
-      const haruTexts = dlg.querySelectorAll('.d-haru .d-text');
-      const targetEl = haruTexts[haruTexts.length - 1];
+      const targetEl = haruBubble.querySelector('.d-text');
       let reveal = null;
       if (targetEl) {
-        targetEl.textContent = '';  // 立即清空，等声音来同步
+        haruBubble.classList.add('typing');
+        targetEl.textContent = '';
         reveal = startReveal(targetEl, data.response);
       }
       await speak(data.response, dur => reveal?.setDuration(dur));
       reveal?.complete();
+      haruBubble.classList.remove('typing');
+
+      // Haru 说完 → 粒子消散 + 飞向星空
+      await dissolveTurn();
     }
   } catch (err) {
     removeTyping();
     toast(err.name === 'AbortError' ? '请求超时' : err.message);
+    // 出错也清一下当前轮，避免残留
+    currentTurn = { userIdx: null, haruIdx: null };
+    renderTurn();
   }
 
   isBusy = false;
 
-  // Haru 说完后自动开始听（除非会话已结束）
+  // Haru 消散完之后自动开始听（除非会话已结束）
   if (micReady && !sessionEnded) {
     isRecording = true;
     setState('listening');
@@ -1449,6 +1587,31 @@ async function process(text) {
   } else {
     setState('waiting');
   }
+}
+
+// ============================================================
+// DISSOLVE —— Haru 说完后粒子化 + 飞向星空
+// ============================================================
+async function dissolveTurn() {
+  const haruEl = dlg.querySelector('.d-haru');
+  const userEl = dlg.querySelector('.d-you');
+  // 说完后短暂停顿，给用户回味一下
+  await new Promise(r => setTimeout(r, 750));
+
+  // 生成粒子（从气泡位置向星空飞去）
+  if (haruEl) spawnDissolveParticles(haruEl, 'cosmic');
+  if (userEl) spawnDissolveParticles(userEl, 'faint');
+
+  // 启动 CSS 消散动画
+  haruEl?.classList.add('dissolving');
+  userEl?.classList.add('dissolving');
+
+  // 等动画走完（2.4s 是 Haru 的最长动画时长）
+  await new Promise(r => setTimeout(r, 2400));
+
+  // 清空当前轮并重新渲染（dlg 会变空）
+  currentTurn = { userIdx: null, haruIdx: null };
+  renderTurn();
 }
 
 // ============================================================
