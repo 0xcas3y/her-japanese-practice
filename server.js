@@ -289,17 +289,28 @@ function hasExcessiveRepetition(s) {
 }
 
 // 语音识别 API（OpenAI Whisper）
-// 接收 raw binary audio 作为 request body（不再用 base64 JSON，省去 33% 数据量和编码时间）
+// 接收 raw binary audio 作为 request body（不再用 base64 JSON）
+// type 用函数形式：body-parser 对 array 的支持不可靠，函数是明确的
 app.post('/api/transcribe',
-  express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '20mb' }),
+  express.raw({
+    type: (req) => {
+      const ct = (req.headers['content-type'] || '').toLowerCase();
+      return ct.startsWith('audio/') || ct.startsWith('application/octet-stream');
+    },
+    limit: '20mb'
+  }),
   async (req, res) => {
   const audioBuffer = req.body;
-  if (!audioBuffer || !audioBuffer.length) {
+  console.log('🎤 /api/transcribe received:',
+              'body isBuffer =', Buffer.isBuffer(audioBuffer),
+              'length =', audioBuffer?.length,
+              'content-type =', req.headers['content-type']);
+  if (!audioBuffer || !Buffer.isBuffer(audioBuffer) || !audioBuffer.length) {
+    console.error('❌ /api/transcribe: no audio body');
     return res.status(400).json({ error: '缺少 audio' });
   }
 
   try {
-    console.log('🎤 incoming audio:', audioBuffer.length, 'bytes, content-type:', req.headers['content-type']);
 
     // 使用 Node 原生 FormData + Blob —— 手写 multipart 会偶发编码问题
     // (之前的 "Invalid file format" 来自手写 Buffer 拼接的边界/换行符边缘情况)
