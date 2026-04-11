@@ -160,9 +160,58 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
+// Whisper 在日语静音/噪音上常见的幻觉（YouTube 视频结尾套话）
+const WHISPER_JA_HALLUCINATIONS = [
+  'ご視聴ありがとうございました',
+  'ご視聴いただきありがとうございました',
+  '最後までご視聴いただきありがとうございました',
+  '最後までご視聴ありがとうございました',
+  'ご清聴ありがとうございました',
+  '最後までご清聴ありがとうございました',
+  'チャンネル登録お願いします',
+  'チャンネル登録お願いいたします',
+  'チャンネル登録よろしくお願いします',
+  'いいねとチャンネル登録お願いします',
+  'ありがとうございました',
+  'おやすみなさい',
+  'ご覧いただきありがとうございました',
+  'どうもありがとうございました',
+  'バイバイ',
+  'Thanks for watching',
+  'Thank you for watching',
+  'Thank you.',
+  'Thank you so much.',
+  '[音楽]',
+  '[拍手]',
+  '(音楽)',
+];
+
+// 规范化文本用于比对（去标点、空格、重复字符）
+function normalizeForHallucinationCheck(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[。、！？\.\,!\?\s「」『』（）\(\)\[\]【】]/g, '')
+    .trim();
+}
+
+function isWhisperHallucination(text) {
+  if (!text) return false;
+  const norm = normalizeForHallucinationCheck(text);
+  if (!norm) return true;
+  // 完全匹配 / 包含关系
+  for (const h of WHISPER_JA_HALLUCINATIONS) {
+    const nh = normalizeForHallucinationCheck(h);
+    if (!nh) continue;
+    if (norm === nh) return true;
+    // 短文本（< 30 字符）如果整段被幻觉套话占据，也算幻觉
+    if (norm.length < 30 && norm.includes(nh) && nh.length >= 6) return true;
+  }
+  return false;
+}
+
 // 语音识别 API（OpenAI Whisper）
 app.post('/api/transcribe', async (req, res) => {
-  const { audio } = req.body; // base64 encoded audio
+  const { audio, hasBrowserText } = req.body; // base64 encoded audio
   if (!audio) return res.status(400).json({ error: '缺少 audio' });
 
   try {
@@ -180,6 +229,7 @@ app.post('/api/transcribe', async (req, res) => {
         `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nja\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${promptText}\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json\r\n` +
         `--${boundary}--\r\n`
       )
     ]);
@@ -200,8 +250,39 @@ app.post('/api/transcribe', async (req, res) => {
     }
 
     const data = await whisperRes.json();
-    const raw = data.text || '';
-    console.log('🎤 Whisper raw:', raw);
+    const raw = (data.text || '').trim();
+
+    // verbose_json 会返回 segments，每段带 no_speech_prob / avg_logprob
+    // 取所有段落的最高 no_speech_prob 作为"这段音频没人说话的可能性"的指标
+    let maxNoSpeech = 0;
+    let minAvgLogprob = 0;
+    if (Array.isArray(data.segments) && data.segments.length > 0) {
+      for (const seg of data.segments) {
+        if (typeof seg.no_speech_prob === 'number' && seg.no_speech_prob > maxNoSpeech) {
+          maxNoSpeech = seg.no_speech_prob;
+        }
+        if (typeof seg.avg_logprob === 'number' && seg.avg_logprob < minAvgLogprob) {
+          minAvgLogprob = seg.avg_logprob;
+        }
+      }
+    }
+    console.log('🎤 Whisper raw:', JSON.stringify(raw),
+                '| no_speech=', maxNoSpeech.toFixed(3),
+                '| logprob=', minAvgLogprob.toFixed(3));
+
+    // 幻觉检测：
+    // 1) no_speech_prob 高 → 静音被当话识别
+    // 2) 文本命中已知日语 Whisper 幻觉黑名单
+    // 3) avg_logprob 过低 → 模型不自信
+    const highNoSpeech = maxNoSpeech > 0.55;
+    const blacklisted = isWhisperHallucination(raw);
+    const lowConfidence = minAvgLogprob < -1.0;
+
+    if (!raw || highNoSpeech || blacklisted || lowConfidence) {
+      console.log('⚠️  hallucination filter hit:',
+                  { empty: !raw, highNoSpeech, blacklisted, lowConfidence });
+      return res.json({ text: '', hallucination: true });
+    }
 
     // 用 Claude 快速加标点和断句
     if (raw.length > 5) {
