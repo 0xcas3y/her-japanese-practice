@@ -1595,13 +1595,16 @@ async function stopRec(silent, manual = false) {
   const shouldCallWhisper = audioBlob && audioBlob.size > 500 && (manual || hadSpeech);
   if (shouldCallWhisper) {
     try {
-      const base64 = await blobToBase64(audioBlob);
-      console.log('📤 sending to Whisper: audio base64 len=', base64?.length);
-      if (base64) {
+      // 直接发送 blob 作为 raw binary —— 比 base64 JSON 小 33%，省去编码时间
+      console.log('📤 sending to Whisper: blob size=', audioBlob.size);
+      {
         const res = await fetch('/api/transcribe', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ audio: base64, hasBrowserText: !!browserText })
+          headers: {
+            'Content-Type': audioBlob.type || 'audio/webm',
+            'X-Has-Browser-Text': browserText ? '1' : '0'
+          },
+          body: audioBlob
         });
         console.log('📥 /api/transcribe status=', res.status);
         const data = await res.json().catch(() => ({}));

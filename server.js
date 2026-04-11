@@ -289,13 +289,17 @@ function hasExcessiveRepetition(s) {
 }
 
 // 语音识别 API（OpenAI Whisper）
-app.post('/api/transcribe', async (req, res) => {
-  const { audio, hasBrowserText } = req.body; // base64 encoded audio
-  if (!audio) return res.status(400).json({ error: '缺少 audio' });
+// 接收 raw binary audio 作为 request body（不再用 base64 JSON，省去 33% 数据量和编码时间）
+app.post('/api/transcribe',
+  express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '20mb' }),
+  async (req, res) => {
+  const audioBuffer = req.body;
+  if (!audioBuffer || !audioBuffer.length) {
+    return res.status(400).json({ error: '缺少 audio' });
+  }
 
   try {
-    const audioBuffer = Buffer.from(audio, 'base64');
-    console.log('🎤 incoming audio:', audioBuffer.length, 'bytes');
+    console.log('🎤 incoming audio:', audioBuffer.length, 'bytes, content-type:', req.headers['content-type']);
 
     // 使用 Node 原生 FormData + Blob —— 手写 multipart 会偶发编码问题
     // (之前的 "Invalid file format" 来自手写 Buffer 拼接的边界/换行符边缘情况)
