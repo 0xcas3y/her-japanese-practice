@@ -1365,24 +1365,41 @@ function hadRealSpeech() {
 // RECORDING
 // ============================================================
 // 开启一个全新的 MediaRecorder —— 每一轮录音必须 reset
-// 否则上一轮停在 audioChunks 里的音频会被下一轮当成"新录音"发给 Whisper
-// 造成"第二次之后每次都返回第一次的文字"的 bug
 function startMediaRecorder() {
+  console.log('🎧 startMediaRecorder: prev state =', mediaRecorder?.state,
+              '| micStream active =', micStream?.active,
+              '| chunks before reset =', audioChunks.length);
   // 解绑旧 recorder 的 handler，防它延迟触发 ondataavailable 污染新的 audioChunks
   if (mediaRecorder) {
     try { mediaRecorder.ondataavailable = null; } catch {}
     if (mediaRecorder.state !== 'inactive') {
       try { mediaRecorder.stop(); } catch {}
     }
+    mediaRecorder = null; // 明确释放引用，防止下面 try 抛了之后还指向旧的
   }
   audioChunks = [];
+
+  if (!micStream || !micStream.active) {
+    console.warn('⚠️  micStream not active — cannot create recorder');
+    return false;
+  }
+
   try {
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus' : 'audio/webm';
     mediaRecorder = new MediaRecorder(micStream, { mimeType });
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+    mediaRecorder.onerror = e => console.error('❌ mediaRecorder error:', e);
     mediaRecorder.start(500);
-  } catch (err) { console.log('recorder err:', err); }
+    console.log('🎧 new recorder ready: state =', mediaRecorder.state, 'mime =', mimeType);
+    return true;
+  } catch (err) {
+    console.error('❌ mediaRecorder creation failed:', err);
+    mediaRecorder = null;
+    return false;
+  }
 }
 
 async function startRec() {
@@ -1642,15 +1659,24 @@ async function process(text) {
   isBusy = false;
 
   // Haru 说完之后自动开始听（除非会话已结束）
-  // ⚠ 必须 startMediaRecorder() 开一个全新的录音器，否则下一轮会发送
-  //    上一轮的 audioChunks 给 Whisper（导致"重复同一句话"bug）
   if (micReady && !sessionEnded) {
+    // 先确保麦克风流还活着 —— TTS 播放期间 iOS 有时会释放它
+    const micOk = await ensureMic();
+    if (!micOk) {
+      console.warn('⚠️  auto-listen: micStream lost, giving up');
+      setState('waiting');
+      return;
+    }
+    console.log('⏱  auto-listen starting for next turn');
     isRecording = true;
     setState('listening');
     live.textContent = '';
     finalTranscript = ''; lastTranscript = '';
     startRecognition();
-    startMediaRecorder();
+    const recOk = startMediaRecorder();
+    if (!recOk) {
+      console.error('❌ auto-listen: could not start recorder, will rely on browser recognition only');
+    }
     startVAD();
   } else {
     setState('waiting');
