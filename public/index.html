@@ -1338,6 +1338,27 @@ function hadRealSpeech() {
 // ============================================================
 // RECORDING
 // ============================================================
+// 开启一个全新的 MediaRecorder —— 每一轮录音必须 reset
+// 否则上一轮停在 audioChunks 里的音频会被下一轮当成"新录音"发给 Whisper
+// 造成"第二次之后每次都返回第一次的文字"的 bug
+function startMediaRecorder() {
+  // 解绑旧 recorder 的 handler，防它延迟触发 ondataavailable 污染新的 audioChunks
+  if (mediaRecorder) {
+    try { mediaRecorder.ondataavailable = null; } catch {}
+    if (mediaRecorder.state !== 'inactive') {
+      try { mediaRecorder.stop(); } catch {}
+    }
+  }
+  audioChunks = [];
+  try {
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mediaRecorder = new MediaRecorder(micStream, { mimeType });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start(500);
+  } catch (err) { console.log('recorder err:', err); }
+}
+
 async function startRec() {
   if (isRecording) return;
   sessionEnded = false;
@@ -1355,20 +1376,8 @@ async function startRec() {
 
   if (!(await ensureMic())) return;
 
-  // 浏览器识别做实时预览
   startRecognition();
-
-  // MediaRecorder 录音，给 Whisper 用
-  audioChunks = [];
-  try {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      try { mediaRecorder.stop(); } catch {}
-    }
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-    mediaRecorder = new MediaRecorder(micStream, { mimeType });
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-    mediaRecorder.start(500); // 每500ms收集，确保有数据
-  } catch (err) { console.log('recorder err:', err); }
+  startMediaRecorder();
 
   isRecording = true;
   isBusy = false;
@@ -1606,13 +1615,16 @@ async function process(text) {
 
   isBusy = false;
 
-  // Haru 消散完之后自动开始听（除非会话已结束）
+  // Haru 说完之后自动开始听（除非会话已结束）
+  // ⚠ 必须 startMediaRecorder() 开一个全新的录音器，否则下一轮会发送
+  //    上一轮的 audioChunks 给 Whisper（导致"重复同一句话"bug）
   if (micReady && !sessionEnded) {
     isRecording = true;
     setState('listening');
     live.textContent = '';
     finalTranscript = ''; lastTranscript = '';
     startRecognition();
+    startMediaRecorder();
     startVAD();
   } else {
     setState('waiting');
