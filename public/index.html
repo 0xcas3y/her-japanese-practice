@@ -1426,7 +1426,8 @@ async function stopRec(silent) {
           const wt = (data.text || '').trim();
           console.log('✅ Whisper result:', wt, 'hallucination:', data.hallucination);
           if (data.hallucination) {
-            console.log('⚠️ server-marked hallucination, using browser result');
+            console.log('⚠️ server-marked hallucination, raw was:', JSON.stringify(data.rawWhisper));
+            // 幻觉 → 回退到浏览器识别结果（finalText 保持 browserText）
           } else if (wt) {
             // 只在浏览器也识别到内容时才做对比；否则直接相信 Whisper（它比浏览器精确）
             if (browserText && !textsLookRelated(wt, browserText)) {

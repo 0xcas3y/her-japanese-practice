@@ -212,18 +212,44 @@ function isWhisperHallucination(text) {
   return false;
 }
 
-// 检测重复型幻觉：长度 ≥ 6 的片段在文本里出现 2+ 次
-// 例："聞こえますか聞こえますかノー" —— "聞こえますか" 重复 = 幻觉
+// 检测重复型幻觉。Whisper 幻觉的典型特征是"相邻位置连续重复同一个片段"
+// 自然语言里偶尔也有重复，但通常是间隔的（中间会插别的词）
+// 策略：
+//   1) 相邻重复：5+ 字符片段紧接着自己出现 → 几乎肯定是幻觉
+//   2) 多次出现：5-15 字符片段出现 3+ 次 → 几乎肯定是幻觉
 function hasExcessiveRepetition(s) {
-  if (!s || s.length < 14) return false; // 短文本不检查
-  const minLen = 6;
-  const maxLen = Math.min(20, Math.floor(s.length / 2));
-  for (let len = minLen; len <= maxLen; len++) {
+  if (!s || s.length < 10) return false;
+
+  // 1) 相邻重复检测（最常见的幻觉模式）
+  //    "忙しかった忙しかった" / "今日はとっても忙しかった今日はとっても忙しかった"
+  const maxLenAdj = Math.min(20, Math.floor(s.length / 2));
+  for (let len = 5; len <= maxLenAdj; len++) {
     for (let i = 0; i + len * 2 <= s.length; i++) {
-      const chunk = s.substring(i, i + len);
-      const rest = s.substring(i + len);
-      if (rest.includes(chunk)) {
+      if (s.substring(i, i + len) === s.substring(i + len, i + len * 2)) {
+        console.log('🔁 adjacent repetition detected:',
+                    JSON.stringify(s.substring(i, i + len)));
         return true;
+      }
+    }
+  }
+
+  // 2) 非相邻但多次出现（3 次以上）
+  //    "聞こえますか? ノー... 聞こえますか? あー、聞こえますか?"
+  const maxLenFar = Math.min(15, Math.floor(s.length / 3));
+  for (let len = 5; len <= maxLenFar; len++) {
+    for (let i = 0; i + len * 3 <= s.length; i++) {
+      const chunk = s.substring(i, i + len);
+      let found = 1;
+      let pos = i + len;
+      while (true) {
+        const next = s.indexOf(chunk, pos);
+        if (next === -1) break;
+        found++;
+        pos = next + len;
+        if (found >= 3) {
+          console.log('🔁 triple+ occurrence detected:', JSON.stringify(chunk));
+          return true;
+        }
       }
     }
   }
@@ -295,8 +321,10 @@ app.post('/api/transcribe', async (req, res) => {
 
     if (!raw || highNoSpeech || blacklisted || lowConfidence) {
       console.log('⚠️  hallucination filter hit:',
-                  { empty: !raw, highNoSpeech, blacklisted, lowConfidence });
-      return res.json({ text: '', hallucination: true });
+                  { empty: !raw, highNoSpeech, blacklisted, lowConfidence },
+                  '| raw was:', JSON.stringify(raw));
+      // 把原始识别结果也返回给客户端，方便调试
+      return res.json({ text: '', hallucination: true, rawWhisper: raw });
     }
 
     // 用 Claude 快速加标点和断句
