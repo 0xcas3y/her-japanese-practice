@@ -135,24 +135,49 @@
     .d-msg{padding:8px 0;animation:text-fade 0.9s ease-out;display:flex;flex-direction:column;}
     @keyframes text-fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
-    /* ===== 消散动画：Haru 气泡飞向上方星空 + 粒子化 ===== */
+    /* ===== 消散飞行场 — 跨视口的 fixed 层，带顶部遮罩 ===== */
+    /* 气泡在消散时被克隆到这里，相对视口飞行并被顶部 mask 吞噬 */
+    .fly-stage{
+      position:fixed;inset:0;pointer-events:none;z-index:8;
+      /* 顶部 0-10vh 全透明（完全隐身）→ 10-20vh 渐变 → 20vh 以下完整显示 */
+      mask-image:linear-gradient(to bottom,
+        transparent 0%,
+        transparent 10%,
+        rgba(0,0,0,0.35) 14%,
+        rgba(0,0,0,0.8) 18%,
+        black 22%,
+        black 100%);
+      -webkit-mask-image:linear-gradient(to bottom,
+        transparent 0%,
+        transparent 10%,
+        rgba(0,0,0,0.35) 14%,
+        rgba(0,0,0,0.8) 18%,
+        black 22%,
+        black 100%);
+    }
+    .fly-stage .d-msg{margin:0;padding:0;}
+
+    /* ===== 消散动画：向上飞 + 粒子化 + 融入星空 ===== */
+    /* 用 vh 单位而不是 px，确保不同屏幕高度都能飞进顶部遮罩区 */
     .d-msg.dissolving .d-text{
-      animation:haru-dissolve 2.4s cubic-bezier(.25,.46,.45,.94) forwards;
+      animation:haru-dissolve 2.6s cubic-bezier(.3,.1,.4,.95) forwards;
       pointer-events:none;
     }
-    .d-msg.dissolving .d-actions{opacity:0;transition:opacity 0.4s;}
+    .d-msg.dissolving .d-actions{opacity:0;transition:opacity 0.3s;}
     .d-you.dissolving .d-text{
-      animation:user-fade 1.8s cubic-bezier(.25,.46,.45,.94) forwards;
+      animation:user-fade 2.0s cubic-bezier(.3,.1,.4,.95) forwards;
     }
     @keyframes haru-dissolve{
       0%   {transform:translateY(0) scale(1);opacity:1;filter:blur(0) brightness(1);}
-      25%  {transform:translateY(-30px) scale(0.99);opacity:0.92;filter:blur(0.5px) brightness(1.25);}
-      60%  {transform:translateY(-150px) scale(0.9);opacity:0.55;filter:blur(4px) brightness(1.35);}
-      100% {transform:translateY(-360px) scale(0.72);opacity:0;filter:blur(14px) brightness(1.5);}
+      20%  {transform:translateY(-4vh) scale(0.99);opacity:0.95;filter:blur(0.3px) brightness(1.2);}
+      55%  {transform:translateY(-28vh) scale(0.92);opacity:0.7;filter:blur(3px) brightness(1.3);}
+      85%  {transform:translateY(-56vh) scale(0.8);opacity:0.22;filter:blur(10px) brightness(1.5);}
+      100% {transform:translateY(-72vh) scale(0.7);opacity:0;filter:blur(16px) brightness(1.6);}
     }
     @keyframes user-fade{
       0%   {transform:translateY(0) translateX(0) scale(1);opacity:1;filter:blur(0);}
-      100% {transform:translateY(-40px) translateX(20px) scale(0.92);opacity:0;filter:blur(8px);}
+      60%  {transform:translateY(-5vh) translateX(12px) scale(0.96);opacity:0.5;filter:blur(4px);}
+      100% {transform:translateY(-18vh) translateX(24px) scale(0.88);opacity:0;filter:blur(10px);}
     }
 
     /* ===== 打字时的发光呼吸（让文字有"在被念出"的感觉） ===== */
@@ -1275,7 +1300,14 @@ function startVAD() {
     const rms = Math.sqrt(sum / data.length);
 
     if (rms > maxRMS) maxRMS = rms;
-    if (rms >= SPEECH_RMS_MIN) speechFrames++;
+    if (rms >= SPEECH_RMS_MIN) {
+      // 用户"开始说话"那一刻 —— 如果当前还有上一轮 Haru 气泡残留，触发消散
+      // 这样气泡停留到用户真的要回应时才飞走，不在 Haru 说完的瞬间就消失
+      if (speechFrames === 0 && currentTurn.haruIdx != null && !dissolvingInProgress) {
+        dissolveTurn();
+      }
+      speechFrames++;
+    }
 
     if (rms > SILENCE_THRESHOLD) {
       // 有声音 → 重置
@@ -1563,16 +1595,13 @@ async function process(text) {
       await speak(data.response, dur => reveal?.setDuration(dur));
       reveal?.complete();
       haruBubble.classList.remove('typing');
-
-      // Haru 说完 → 粒子消散 + 飞向星空
-      await dissolveTurn();
+      // ⚠ 不在此处消散气泡。消散由 VAD 在用户"开始说话"那一刻触发
     }
   } catch (err) {
     removeTyping();
     toast(err.name === 'AbortError' ? '请求超时' : err.message);
-    // 出错也清一下当前轮，避免残留
-    currentTurn = { userIdx: null, haruIdx: null };
-    renderTurn();
+    // 出错时清掉残留气泡
+    dissolveTurn();
   }
 
   isBusy = false;
@@ -1591,28 +1620,70 @@ async function process(text) {
 }
 
 // ============================================================
-// DISSOLVE —— Haru 说完后粒子化 + 飞向星空
+// DISSOLVE —— 气泡克隆到 fly-stage，粒子化 + 飞入顶部遮罩星空
+// 关键：立刻清空原 dialogue，让新一轮气泡可以无缝进场
+// 触发时机：用户"开始说话"那一刻（由 VAD 捕捉），不是 speak 结束时
 // ============================================================
-async function dissolveTurn() {
+let dissolvingInProgress = false;  // 防止同一轮触发多次
+
+function dissolveTurn() {
+  if (dissolvingInProgress) return;
   const haruEl = dlg.querySelector('.d-haru');
   const userEl = dlg.querySelector('.d-you');
-  // 说完后短暂停顿，给用户回味一下
-  await new Promise(r => setTimeout(r, 750));
+  if (!haruEl && !userEl) return;
+  dissolvingInProgress = true;
 
-  // 生成粒子（从气泡位置向星空飞去）
-  if (haruEl) spawnDissolveParticles(haruEl, 'cosmic');
-  if (userEl) spawnDissolveParticles(userEl, 'faint');
+  // 建立（或复用）飞行场
+  let stage = document.querySelector('.fly-stage');
+  if (!stage) {
+    stage = document.createElement('div');
+    stage.className = 'fly-stage';
+    document.body.appendChild(stage);
+  }
 
-  // 启动 CSS 消散动画
-  haruEl?.classList.add('dissolving');
-  userEl?.classList.add('dissolving');
+  // 把原气泡克隆到 fly-stage，按原位置 fixed 定位
+  const cloneBubble = (src) => {
+    if (!src) return null;
+    const rect = src.getBoundingClientRect();
+    const clone = src.cloneNode(true);
+    // 清掉可能的按钮，防止克隆里残留事件绑定
+    clone.querySelectorAll('.d-act').forEach(x => x.remove());
+    clone.style.position = 'fixed';
+    clone.style.left = rect.left + 'px';
+    clone.style.top = rect.top + 'px';
+    clone.style.width = rect.width + 'px';
+    clone.style.margin = '0';
+    clone.style.padding = '0';
+    clone.style.pointerEvents = 'none';
+    stage.appendChild(clone);
+    return clone;
+  };
 
-  // 等动画走完（2.4s 是 Haru 的最长动画时长）
-  await new Promise(r => setTimeout(r, 2400));
+  const haruClone = cloneBubble(haruEl);
+  const userClone = cloneBubble(userEl);
 
-  // 清空当前轮并重新渲染（dlg 会变空）
+  // 立刻清空原 dialogue —— 下一轮可以零延迟进场
   currentTurn = { userIdx: null, haruIdx: null };
   renderTurn();
+
+  // 撒消散粒子（从克隆位置发射，融入星空）
+  if (haruClone) spawnDissolveParticles(haruClone, 'cosmic');
+  if (userClone) spawnDissolveParticles(userClone, 'faint');
+
+  // 下一帧启动 CSS 动画（确保 reflow 完成）
+  requestAnimationFrame(() => {
+    haruClone?.classList.add('dissolving');
+    userClone?.classList.add('dissolving');
+  });
+
+  // 动画跑完后清理 DOM
+  setTimeout(() => {
+    haruClone?.remove();
+    userClone?.remove();
+    // 如果 stage 空了，顺便移除
+    if (stage && stage.children.length === 0) stage.remove();
+    dissolvingInProgress = false;
+  }, 2800);
 }
 
 // ============================================================
