@@ -50,12 +50,35 @@
       transition:opacity 3s ease;pointer-events:none;z-index:0;
     }
     .glow.on{opacity:0.7;}
-    .glow-1{width:460px;height:460px;background:radial-gradient(circle,rgba(120,90,255,0.18),transparent 70%);top:-120px;left:-120px;}
-    .glow-2{width:360px;height:360px;background:radial-gradient(circle,rgba(80,180,255,0.14),transparent 70%);bottom:-80px;right:-80px;}
-    .glow-center{width:420px;height:420px;background:radial-gradient(circle,rgba(140,120,255,0.10),transparent 60%);top:42%;left:50%;transform:translate(-50%,-50%);animation:glow-breathe 6s ease-in-out infinite;}
+    .glow-1{
+      width:460px;height:460px;
+      background:radial-gradient(circle,rgba(120,90,255,0.22),transparent 70%);
+      top:-120px;left:-120px;
+      animation:glow-drift1 14s ease-in-out infinite;
+    }
+    .glow-2{
+      width:360px;height:360px;
+      background:radial-gradient(circle,rgba(80,180,255,0.18),transparent 70%);
+      bottom:-80px;right:-80px;
+      animation:glow-drift2 18s ease-in-out infinite;
+    }
+    .glow-center{
+      width:420px;height:420px;
+      background:radial-gradient(circle,rgba(140,120,255,0.12),transparent 60%);
+      top:42%;left:50%;transform:translate(-50%,-50%);
+      animation:glow-breathe 6s ease-in-out infinite;
+    }
     @keyframes glow-breathe{
       0%,100%{transform:translate(-50%,-50%) scale(1);opacity:0.7;}
-      50%{transform:translate(-50%,-50%) scale(1.12);opacity:0.9;}
+      50%{transform:translate(-50%,-50%) scale(1.15);opacity:0.95;}
+    }
+    @keyframes glow-drift1{
+      0%,100%{transform:translate(0,0) scale(1);opacity:0.6;}
+      50%{transform:translate(40px,30px) scale(1.08);opacity:0.85;}
+    }
+    @keyframes glow-drift2{
+      0%,100%{transform:translate(0,0) scale(1);opacity:0.55;}
+      50%{transform:translate(-35px,-25px) scale(1.1);opacity:0.8;}
     }
 
     /* ===== Layout ===== */
@@ -588,11 +611,76 @@ class Pt {
 
 for (let i = 0; i < N; i++) pts.push(new Pt());
 
+// ========== 流星系统 ==========
+const shootingStars = [];
+let nextShootingStar = 0;
+
+class ShootingStar {
+  constructor() {
+    // 从屏幕上方某个位置向右下方划过
+    const fromLeft = Math.random() < 0.5;
+    this.x = fromLeft ? Math.random() * canvas.width * 0.3 : canvas.width * 0.7 + Math.random() * canvas.width * 0.3;
+    this.y = Math.random() * canvas.height * 0.4;
+    // 角度：左上向右下 或 右上向左下
+    const angle = fromLeft
+      ? (Math.PI * 0.15) + Math.random() * (Math.PI * 0.15)  // 15-30°
+      : (Math.PI * 0.7) + Math.random() * (Math.PI * 0.15);  // 125-140°
+    const speed = 6 + Math.random() * 4;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.life = 1;
+    this.decay = 0.012 + Math.random() * 0.008;
+    this.len = 80 + Math.random() * 60;
+    // 颜色：白、淡金、淡青
+    const roll = Math.random();
+    this.col = roll < 0.6 ? '255,255,255' : (roll < 0.85 ? '255,240,200' : '180,220,255');
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life -= this.decay;
+  }
+  draw() {
+    if (this.life <= 0) return;
+    // 拖尾
+    const tailX = this.x - this.vx * (this.len / 8);
+    const tailY = this.y - this.vy * (this.len / 8);
+    const grad = ctx.createLinearGradient(this.x, this.y, tailX, tailY);
+    grad.addColorStop(0, `rgba(${this.col},${this.life * 0.9})`);
+    grad.addColorStop(1, `rgba(${this.col},0)`);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+    // 头部亮点
+    ctx.fillStyle = `rgba(${this.col},${this.life})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  get dead() { return this.life <= 0 || this.x < -200 || this.x > canvas.width + 200 || this.y > canvas.height + 200; }
+}
+
 function drawPts(t) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < N; i++) {
     pts[i].update(t); pts[i].draw();
   }
+
+  // 流星：平均 8-15 秒一颗，idle / listening 时都会出现
+  if (t >= nextShootingStar) {
+    shootingStars.push(new ShootingStar());
+    nextShootingStar = t + 8000 + Math.random() * 7000;
+  }
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    shootingStars[i].update();
+    shootingStars[i].draw();
+    if (shootingStars[i].dead) shootingStars.splice(i, 1);
+  }
+
   // Constellation lines only when AI is speaking (subtle network effect)
   if (aiState === 'speaking' || aiState === 'thinking') {
     for (let i = 0; i < N; i++) {
@@ -715,12 +803,21 @@ class GalaxyPt {
       this.alpha = this.baseAlpha * 0.8 + Math.sin(t * 0.003) * 0.1;
       this.size = this.baseSize * 0.9;
     } else {
-      // idle / waiting: 缓慢飘散呼吸
-      this.x = this.baseX + Math.sin(this.phase) * 0.008 + this.driftX * Math.sin(t * 0.001);
-      this.y = this.baseY + Math.cos(this.phase * 0.7) * 0.005 + this.driftY * Math.cos(t * 0.001);
-      this.orbitAngle += this.orbitSpeed;
-      this.alpha = this.baseAlpha + Math.sin(this.phase) * 0.08;
-      this.size = this.baseSize + Math.sin(this.phase * 2) * 0.3;
+      // idle: 整个星系极慢旋转 + 呼吸 + 每颗粒子自身微摆 + 大呼吸
+      // 1) 全星系慢速逆时针旋转 (~120s 一圈)
+      this.orbitAngle += 0.00025 + this.orbitR * 0.0001;
+      // 2) 大呼吸脉动 (~6s 周期)
+      const breath = (Math.sin(t * 0.001) + 1) / 2; // 0..1
+      const breathR = 1 + breath * 0.08;
+      // 3) 每颗粒子的自由摆动
+      const wobbleX = Math.sin(this.phase) * 0.015;
+      const wobbleY = Math.cos(this.phase * 0.8) * 0.012;
+      // 最终位置：基于 orbitAngle 和 orbitR 重新计算，配上呼吸和摆动
+      this.x = 0.5 + Math.cos(this.orbitAngle) * this.orbitR * 1.35 * breathR + wobbleX;
+      this.y = 0.42 + Math.sin(this.orbitAngle) * this.orbitR * 0.72 * breathR + wobbleY;
+      // alpha 跟着呼吸 + 自身 twinkle
+      this.alpha = this.baseAlpha * (0.75 + breath * 0.35) + Math.sin(this.phase * 2) * 0.1;
+      this.size = this.baseSize * (0.9 + breath * 0.15) + Math.sin(this.phase * 2) * 0.3;
     }
   }
   draw() {
@@ -761,7 +858,10 @@ function drawSoul(t) {
     intensity = 0.55 + b * 0.85;
     breathScale = 0.9 + b * 0.15;
   } else {
-    intensity = 0.55 + Math.sin(t * 0.0006) * 0.1;
+    // idle: 更明显的呼吸 (6s 周期) + 微旋转缩放
+    const b = (Math.sin(t * 0.001) + 1) / 2; // 0..1
+    intensity = 0.45 + b * 0.55; // 0.45 → 1.0
+    breathScale = 0.92 + b * 0.12;
   }
 
   // Layer 1 — 大片紫蓝水墨（外层晕染）
