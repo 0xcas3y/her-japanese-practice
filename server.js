@@ -244,6 +244,39 @@ function isWhisperHallucination(text) {
   return false;
 }
 
+// "救援"被复读的 Whisper 输出：返回第一段不重复的内容
+// 例如 "いいえ、そんなことないよ。まだ勉強中です。 あなたは? あなたは? あなたは?"
+// → "いいえ、そんなことないよ。まだ勉強中です。"
+// 如果没有检测到重复，返回原文
+function salvageRepetition(s) {
+  if (!s || s.length < 12) return s;
+  // 去掉空格比较（保留标点），让 "あなたは? あなたは?" 能被认作重复
+  const noSpace = s.replace(/\s+/g, '');
+  if (noSpace.length < 12) return s;
+
+  const maxLen = Math.min(30, Math.floor(noSpace.length / 2));
+  // 从长到短找，最先找到的最长的重复就 cut
+  for (let len = maxLen; len >= 6; len--) {
+    for (let i = 0; i + len * 2 <= noSpace.length; i++) {
+      if (noSpace.substring(i, i + len) === noSpace.substring(i + len, i + len * 2)) {
+        // 找到 noSpace 里 i 位置。映射回原文 position（考虑被剥掉的空格）
+        let origPos = 0, seen = 0;
+        while (seen < i && origPos < s.length) {
+          if (!/\s/.test(s[origPos])) seen++;
+          origPos++;
+        }
+        const salvaged = s.substring(0, origPos).trim();
+        if (salvaged.length >= 4) {
+          console.log('💊 salvaged repetition:', JSON.stringify(salvaged),
+                      '(cut off:', JSON.stringify(s.substring(origPos)), ')');
+          return salvaged;
+        }
+      }
+    }
+  }
+  return s;
+}
+
 // 检测重复型幻觉。Whisper 幻觉的典型特征是"相邻位置连续重复同一个片段"
 // 但自然口语里 5-7 字的重复很常见（停顿、强调、修正）
 // 策略提高到 8 字 —— 只抓明显的机器幻觉，不误伤自然重复
@@ -300,11 +333,11 @@ app.post('/api/transcribe',
     limit: '20mb'
   }),
   async (req, res) => {
+  const tStart = Date.now();
   const audioBuffer = req.body;
   console.log('🎤 /api/transcribe received:',
-              'body isBuffer =', Buffer.isBuffer(audioBuffer),
-              'length =', audioBuffer?.length,
-              'content-type =', req.headers['content-type']);
+              audioBuffer?.length, 'bytes |',
+              req.headers['content-type']);
   if (!audioBuffer || !Buffer.isBuffer(audioBuffer) || !audioBuffer.length) {
     console.error('❌ /api/transcribe: no audio body');
     return res.status(400).json({ error: '缺少 audio' });
@@ -322,14 +355,15 @@ app.post('/api/transcribe',
     form.append('temperature', '0');
     form.append('response_format', 'verbose_json');
 
+    const tWhisperStart = Date.now();
     const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        // 让 fetch 自动设置 Content-Type + boundary
       },
       body: form
     });
+    console.log(`⏱  OpenAI Whisper round-trip: ${Date.now() - tWhisperStart}ms`);
 
     if (!whisperRes.ok) {
       const err = await whisperRes.text();
@@ -340,8 +374,6 @@ app.post('/api/transcribe',
     const data = await whisperRes.json();
     const raw = (data.text || '').trim();
 
-    // verbose_json 会返回 segments，每段带 no_speech_prob / avg_logprob
-    // 取所有段落的最高 no_speech_prob 作为"这段音频没人说话的可能性"的指标
     let maxNoSpeech = 0;
     let minAvgLogprob = 0;
     if (Array.isArray(data.segments) && data.segments.length > 0) {
@@ -358,41 +390,49 @@ app.post('/api/transcribe',
                 '| no_speech=', maxNoSpeech.toFixed(3),
                 '| logprob=', minAvgLogprob.toFixed(3));
 
-    // 幻觉检测：
-    // 1) no_speech_prob 高 → 静音被当话识别
-    // 2) 文本命中已知日语 Whisper 幻觉黑名单
-    // 3) avg_logprob 过低 → 模型不自信
+    // 步骤 1：先尝试救援重复幻觉 —— 如果开头一段是对的、后面是重复，截出前面部分
+    // 不再一刀切整段丢掉
+    const salvaged = salvageRepetition(raw);
+    const wasSalvaged = salvaged !== raw;
+
+    // 步骤 2：对（救援后的）文本做安全检查
+    //  1) no_speech_prob 高 → 静音被当话识别
+    //  2) 文本命中已知日语 Whisper 幻觉黑名单（YouTube 结尾套话等）
+    //  3) avg_logprob 过低 → 模型不自信
     const highNoSpeech = maxNoSpeech > 0.55;
-    const blacklisted = isWhisperHallucination(raw);
+    const blacklisted = isWhisperHallucination(salvaged);
     const lowConfidence = minAvgLogprob < -1.0;
 
-    if (!raw || highNoSpeech || blacklisted || lowConfidence) {
+    if (!salvaged || highNoSpeech || blacklisted || lowConfidence) {
       console.log('⚠️  hallucination filter hit:',
-                  { empty: !raw, highNoSpeech, blacklisted, lowConfidence },
+                  { empty: !salvaged, highNoSpeech, blacklisted, lowConfidence, wasSalvaged },
                   '| raw was:', JSON.stringify(raw));
-      // 把原始识别结果也返回给客户端，方便调试
       return res.json({ text: '', hallucination: true, rawWhisper: raw });
     }
 
-    // 用 Claude 快速加标点和断句
-    if (raw.length > 5) {
-      try {
-        const fixRes = await anthropic.messages.create({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 300,
-          messages: [{
-            role: 'user',
-            content: `以下は音声認識の結果です。句読点（、。）や間（...）を適切に追加して、自然な話し言葉にしてください。内容は一切変えないでください。結果だけ出力：\n${raw}`
-          }]
-        });
-        const fixed = fixRes.content[0].text.trim();
-        console.log('🎤 Fixed:', fixed);
-        res.json({ text: fixed });
-      } catch {
-        res.json({ text: raw });
-      }
-    } else {
-      res.json({ text: raw });
+    // 大幅速度优化：如果 Whisper 已经输出了标点（通常会），直接返回
+    // 否则才走 Claude 的"补标点"步骤（之前每次都走 Claude，浪费 2-4 秒/轮）
+    const hasPunctuation = /[。、？！，,.?!…]/.test(salvaged);
+    if (hasPunctuation || salvaged.length <= 5) {
+      console.log(`🎤 returning salvaged directly (punct=${hasPunctuation}, total=${Date.now() - tStart}ms)`);
+      return res.json({ text: salvaged });
+    }
+
+    // 没标点 → 过 Claude 补一道（少数情况）
+    try {
+      const fixRes = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: `以下は音声認識の結果です。句読点（、。）や間（...）を適切に追加して、自然な話し言葉にしてください。内容は一切変えないでください。結果だけ出力：\n${salvaged}`
+        }]
+      });
+      const fixed = fixRes.content[0].text.trim();
+      console.log('🎤 Fixed via Claude:', fixed);
+      res.json({ text: fixed });
+    } catch {
+      res.json({ text: salvaged });
     }
   } catch (err) {
     console.error('Transcribe error:', err.message);
