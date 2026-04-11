@@ -630,6 +630,21 @@
 
 <script>
 // ============================================================
+// 预热 Railway ——  避免用户第一句话遇到冷启动 3-5 秒
+// 页面一加载就 ping 一下，并每 4 分钟 ping 一次保持不休眠
+// ============================================================
+(function warmupRailway() {
+  const ping = () => {
+    const t = Date.now();
+    fetch('/api/ping').then(r => r.json()).then(d => {
+      console.log(`🏓 /api/ping ${Date.now() - t}ms`, d);
+    }).catch(() => {});
+  };
+  ping();
+  setInterval(ping, 4 * 60 * 1000); // 每 4 分钟保活
+})();
+
+// ============================================================
 // STATE
 // ============================================================
 let messages = JSON.parse(localStorage.getItem('haruMsg2') || '[]');
@@ -1387,10 +1402,12 @@ let silentSince = 0;
 let audioCtx = null, analyser = null, vadSource = null;
 let maxRMS = 0, speechFrames = 0; // track whether any real speech happened
 // 阈值放宽：原来 0.012/0.018 在嘈杂环境下会让"一直有噪音"的 VAD 永远不认为你沉默
-const SILENCE_THRESHOLD = 0.018; // 低于这个音量算安静（原来 0.012）
-const SPEECH_RMS_MIN = 0.024;    // 要有这个音量才算"真的说过话"（原来 0.018）
-// 这两个值有 gap（0.018-0.024）—— 轻微噪音不算"说话"但也不影响静默触发
-const SPEECH_FRAMES_MIN = 3;     // 至少 3 帧 ≥ 300ms
+const SILENCE_THRESHOLD = 0.018; // 低于这个音量算安静
+const SPEECH_RMS_MIN = 0.024;    // 要有这个音量才算"真的说过话"
+// SPEECH_FRAMES_MIN = 1：只要有 1 帧（100ms）真实语音就承认。
+// 之前是 3 帧（300ms），导致说短句"はい"、"そう"这种时 hadRealSpeech 永远 false，
+// VAD 等不到自动停止条件。
+const SPEECH_FRAMES_MIN = 1;
 const SILENCE_DURATION = 2000;   // 静默 2 秒后自动发送
 
 function startVAD() {
@@ -1723,6 +1740,7 @@ function releaseMic() {
 async function process(text) {
   isBusy = true;
   startTimer();
+  const tProcessStart = Date.now();
 
   // 推入用户消息，并把它作为当前轮的 user
   const userMsg = { role: 'user', text };
@@ -1734,6 +1752,7 @@ async function process(text) {
   showTyping();
 
   try {
+    const tChatStart = Date.now();
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 25000);
     const res = await fetch('/api/chat', {
@@ -1741,6 +1760,7 @@ async function process(text) {
       body: JSON.stringify({ messages, memories: getMemories() }), signal: ctrl.signal
     });
     clearTimeout(to);
+    console.log(`⏱  /api/chat [+${Date.now() - tChatStart}ms] status=${res.status}`);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'error');
     const data = await res.json();
 
@@ -1970,6 +1990,7 @@ async function speak(text, onDuration) {
   speechSynthesis.cancel();
 
   try {
+    const tTtsStart = Date.now();
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 12000);
     const res = await fetch('/api/tts', {
@@ -1977,6 +1998,7 @@ async function speak(text, onDuration) {
       body: JSON.stringify({ text }), signal: ctrl.signal
     });
     clearTimeout(to);
+    console.log(`⏱  /api/tts [+${Date.now() - tTtsStart}ms] status=${res.status}`);
     if (!res.ok) throw new Error();
 
     const blob = await res.blob();

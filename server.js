@@ -79,6 +79,11 @@ function buildSystemPrompt(memories) {
   return BASE_PROMPT + `\n\n=== 你对用户的记忆 ===\n以下是你从过去的对话中记住的关于用户的事情，请自然地运用这些记忆：\n${memories.join('\n')}`;
 }
 
+// 预热 ping —— 避免 Railway 冷启动。页面加载时客户端会调一次
+app.get('/api/ping', (req, res) => {
+  res.json({ ok: true, t: Date.now() });
+});
+
 // 聊天 API
 app.post('/api/chat', async (req, res) => {
   const { messages: history, memories } = req.body;
