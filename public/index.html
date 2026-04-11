@@ -35,57 +35,13 @@
       padding:50px 24px 50px;overflow:hidden;
     }
 
-    /* ===== Soul orb ===== */
+    /* ===== Soul visualizer ===== */
     .soul{
-      position:relative;width:140px;height:140px;
+      position:relative;width:200px;height:200px;
       cursor:pointer;-webkit-tap-highlight-color:transparent;
-      flex-shrink:0;transition:all 1s cubic-bezier(0.4,0,0.2,1);
+      flex-shrink:0;
     }
-    .soul-core{
-      width:100%;height:100%;border-radius:50%;
-      background:radial-gradient(circle at 35% 35%,#ffb088,#ff7043 40%,#e64a19 80%);
-      box-shadow:0 0 60px 15px rgba(255,112,67,0.2),0 0 120px 40px rgba(255,112,67,0.06);
-      animation:soul-idle 5s infinite ease-in-out;
-      transition:all 0.6s ease;
-    }
-    /* States */
-    .soul.listening .soul-core{
-      background:radial-gradient(circle at 35% 35%,#ff8a80,#ff5252 40%,#d32f2f 80%);
-      box-shadow:0 0 80px 25px rgba(255,82,82,0.3),0 0 150px 50px rgba(255,82,82,0.08);
-      animation:soul-listen 1.8s infinite ease-in-out;
-    }
-    .soul.thinking .soul-core{
-      background:radial-gradient(circle at 35% 35%,#ffe0b2,#ffb74d 40%,#ff9800 80%);
-      box-shadow:0 0 70px 20px rgba(255,183,77,0.25);
-      animation:soul-think 2.5s infinite ease-in-out;
-    }
-    .soul.speaking .soul-core{
-      background:radial-gradient(circle at 35% 35%,#ffcc80,#ff8a65 40%,#ff5722 80%);
-      box-shadow:0 0 90px 30px rgba(255,138,101,0.35);
-      animation:soul-speak 0.6s infinite ease-in-out;
-    }
-    .soul.waiting .soul-core{
-      box-shadow:0 0 80px 25px rgba(255,112,67,0.35),0 0 140px 50px rgba(255,112,67,0.1);
-      animation:soul-waiting 2s infinite ease-in-out;
-    }
-
-    @keyframes soul-idle{0%,100%{transform:scale(1)}50%{transform:scale(1.015)}}
-    @keyframes soul-listen{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
-    @keyframes soul-think{0%,100%{transform:scale(0.97);opacity:.85}50%{transform:scale(1.03);opacity:1}}
-    @keyframes soul-speak{0%,100%{transform:scale(1)}30%{transform:scale(1.04)}60%{transform:scale(0.97)}}
-    @keyframes soul-waiting{0%,100%{transform:scale(1);box-shadow:0 0 80px 25px rgba(255,112,67,0.35)}50%{transform:scale(1.03);box-shadow:0 0 100px 35px rgba(255,112,67,0.45)}}
-
-    .soul-ring{
-      position:absolute;inset:-10px;border-radius:50%;
-      border:1px solid rgba(255,112,67,0.1);
-      animation:ring-spin 12s linear infinite;
-    }
-    .soul-ring::after{
-      content:'';position:absolute;top:0;left:50%;
-      width:3px;height:3px;background:rgba(255,160,120,0.4);
-      border-radius:50%;transform:translateX(-50%);
-    }
-    @keyframes ring-spin{to{transform:rotate(360deg)}}
+    .soul canvas{width:100%;height:100%;}
 
     /* ===== Soul label ===== */
     .soul-label{
@@ -377,8 +333,7 @@
 <!-- Scene -->
 <div class="scene">
   <div class="soul" id="soul" onclick="tap()">
-    <div class="soul-core"></div>
-    <div class="soul-ring"></div>
+    <canvas id="soulCanvas" width="400" height="400"></canvas>
   </div>
   <div class="soul-label" id="label">tap to speak</div>
   <div class="dialogue" id="dialogue"></div>
@@ -498,6 +453,130 @@ function drawPts(t) {
   requestAnimationFrame(drawPts);
 }
 requestAnimationFrame(drawPts);
+
+// ============================================================
+// SOUL VISUALIZER — 电波粒子系统
+// ============================================================
+const soulCanvas = document.getElementById('soulCanvas');
+const sCtx = soulCanvas.getContext('2d');
+const SC = 400; // canvas size
+const sCx = SC / 2, sCy = SC / 2;
+const SOUL_PARTICLES = 80;
+const soulPts = [];
+
+class SoulPt {
+  constructor(i) {
+    this.i = i;
+    this.angle = (i / SOUL_PARTICLES) * Math.PI * 2;
+    this.baseR = 50 + Math.random() * 30;
+    this.r = this.baseR;
+    this.size = Math.random() * 2 + 0.8;
+    this.speed = 0.002 + Math.random() * 0.003;
+    this.drift = Math.random() * 40 - 20;
+    this.phase = Math.random() * Math.PI * 2;
+    this.alpha = 0.3 + Math.random() * 0.4;
+  }
+  update(t) {
+    this.phase += this.speed;
+    const state = aiState;
+
+    if (state === 'listening') {
+      // 电波形态：粒子排列成有规律的波形环
+      const wave = Math.sin(this.angle * 3 + t * 0.004) * 25;
+      this.r = 60 + wave;
+      this.alpha = 0.5 + Math.sin(t * 0.006 + this.i) * 0.3;
+      this.size = 1.5 + Math.sin(t * 0.005 + this.angle) * 0.8;
+      this.angle += 0.008;
+    } else if (state === 'speaking') {
+      // 脉动电波：快速有节奏的扩缩
+      const pulse = Math.sin(t * 0.012 + this.i * 0.3) * 30;
+      const wave = Math.sin(this.angle * 5 + t * 0.008) * 15;
+      this.r = 55 + pulse + wave;
+      this.alpha = 0.4 + Math.abs(Math.sin(t * 0.01 + this.i * 0.2)) * 0.5;
+      this.size = 1 + Math.abs(Math.sin(t * 0.015 + this.i)) * 2;
+      this.angle += 0.005;
+    } else if (state === 'thinking') {
+      // 缓慢旋转收缩
+      this.r = 45 + Math.sin(t * 0.002 + this.i * 0.1) * 15;
+      this.alpha = 0.3 + Math.sin(t * 0.003) * 0.15;
+      this.size = 1.2;
+      this.angle += 0.015;
+    } else if (state === 'waiting') {
+      // 平静呼吸
+      this.r = this.baseR + Math.sin(t * 0.002 + this.phase) * 8;
+      this.alpha = 0.3 + Math.sin(t * 0.002 + this.phase) * 0.1;
+      this.size = 1 + Math.sin(this.phase) * 0.3;
+      this.angle += 0.002;
+    } else {
+      // idle: 随机飘散
+      this.r = this.baseR + Math.sin(this.phase * 2) * this.drift;
+      this.alpha = 0.15 + Math.sin(this.phase) * 0.1;
+      this.size = 0.8 + Math.sin(this.phase * 3) * 0.5;
+      this.angle += this.speed * 0.5;
+    }
+  }
+  draw() {
+    const x = sCx + Math.cos(this.angle) * this.r;
+    const y = sCy + Math.sin(this.angle) * this.r;
+    const a = Math.max(0, Math.min(1, this.alpha));
+    const s = Math.max(0.3, this.size);
+
+    // 发光效果
+    sCtx.beginPath();
+    sCtx.arc(x, y, s + 1, 0, Math.PI * 2);
+    sCtx.fillStyle = `rgba(255,160,120,${a * 0.15})`;
+    sCtx.fill();
+
+    // 核心
+    sCtx.beginPath();
+    sCtx.arc(x, y, s, 0, Math.PI * 2);
+    sCtx.fillStyle = `rgba(255,180,140,${a})`;
+    sCtx.fill();
+
+    return { x, y, a };
+  }
+}
+
+for (let i = 0; i < SOUL_PARTICLES; i++) soulPts.push(new SoulPt(i));
+
+function drawSoul(t) {
+  sCtx.clearRect(0, 0, SC, SC);
+
+  // 中心微光
+  const glowA = aiState === 'speaking' ? 0.08 : aiState === 'listening' ? 0.05 : 0.02;
+  const grad = sCtx.createRadialGradient(sCx, sCy, 0, sCx, sCy, 100);
+  grad.addColorStop(0, `rgba(255,140,100,${glowA})`);
+  grad.addColorStop(1, 'transparent');
+  sCtx.fillStyle = grad;
+  sCtx.fillRect(0, 0, SC, SC);
+
+  // 绘制粒子并收集位置用于连线
+  const positions = [];
+  soulPts.forEach(p => {
+    p.update(t);
+    positions.push(p.draw());
+  });
+
+  // 连线
+  const lineA = aiState === 'speaking' ? 0.12 : aiState === 'listening' ? 0.08 : 0.03;
+  for (let i = 0; i < positions.length; i++) {
+    const next = (i + 1) % positions.length;
+    const dx = positions[i].x - positions[next].x;
+    const dy = positions[i].y - positions[next].y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < 60) {
+      sCtx.strokeStyle = `rgba(255,160,120,${lineA * (1 - d / 60)})`;
+      sCtx.lineWidth = 0.4;
+      sCtx.beginPath();
+      sCtx.moveTo(positions[i].x, positions[i].y);
+      sCtx.lineTo(positions[next].x, positions[next].y);
+      sCtx.stroke();
+    }
+  }
+
+  requestAnimationFrame(drawSoul);
+}
+requestAnimationFrame(drawSoul);
 
 // ============================================================
 // BGM - Ambient Audio
