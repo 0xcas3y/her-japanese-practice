@@ -1452,19 +1452,37 @@ async function process(text) {
 }
 
 // ============================================================
-// TEXT REVEAL — 打字机式逐字显示 + 跟读滚动
+// TEXT REVEAL — 打字机式逐字显示 + 开头优先 + 必要时跟读滚动
 // ============================================================
 function startReveal(el, fullText) {
   const chars = [...fullText];  // 按 code point 切，emoji 安全
   let i = 0;
   let handle = null;
-  // 默认速度：~14 字/秒（≈70ms），等声音来再校正
   let intervalMs = 70;
   let done = false;
 
-  const scrollDown = () => {
-    // 让 Haru 气泡始终保持在对话框底部
-    dlg.scrollTop = dlg.scrollHeight;
+  const msgEl = el.closest('.d-msg');
+
+  // 初始：把 Haru 新消息的顶部对齐到对话框顶部（稍带一点内边距）
+  // 这样长消息你能从头读起，不会一上来就看到末尾
+  const alignMsgToTop = () => {
+    if (!msgEl) return;
+    const msgRect = msgEl.getBoundingClientRect();
+    const dlgRect = dlg.getBoundingClientRect();
+    const offset = msgRect.top - dlgRect.top;
+    const target = dlg.scrollTop + offset - 12;
+    dlg.scrollTop = Math.max(0, target);
+  };
+
+  // 跟读滚动：只在新字符快碰到对话框下边时才滚一点
+  const followIfOverflow = () => {
+    if (!msgEl) return;
+    const msgRect = msgEl.getBoundingClientRect();
+    const dlgRect = dlg.getBoundingClientRect();
+    const bottomMargin = 20;
+    if (msgRect.bottom > dlgRect.bottom - bottomMargin) {
+      dlg.scrollTop += (msgRect.bottom - dlgRect.bottom) + bottomMargin + 4;
+    }
   };
 
   const tick = () => {
@@ -1473,7 +1491,7 @@ function startReveal(el, fullText) {
       return;
     }
     el.textContent += chars[i++];
-    scrollDown();
+    followIfOverflow();
   };
 
   const schedule = () => {
@@ -1481,7 +1499,11 @@ function startReveal(el, fullText) {
     handle = setInterval(tick, intervalMs);
   };
 
-  schedule();
+  // 等下一帧，确保清空后的空气泡布局已完成，再对齐顶部
+  requestAnimationFrame(() => {
+    alignMsgToTop();
+    schedule();
+  });
 
   return {
     // 声音加载完成后，用真实时长校正显示速度
@@ -1497,7 +1519,7 @@ function startReveal(el, fullText) {
       handle = null;
       done = true;
       el.textContent = fullText;
-      scrollDown();
+      followIfOverflow();
     }
   };
 }
