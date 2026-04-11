@@ -260,23 +260,35 @@
       }
       .dialogue{max-width:100%;padding:20px 4px 8px;}
 
-      /* 手机消散动画：去掉 filter:blur + brightness（GPU 杀手），
-         只保留 transform + opacity。轻量很多，不卡顿 */
+      /* 手机消散动画：极轻量 1 秒内完成 —— 不和 VAD 抢主线程 */
+      /* 完全去掉 filter:blur / brightness / mask，只保留 transform + opacity */
+      .d-msg.dissolving .d-text{
+        animation:haru-dissolve 1.0s cubic-bezier(.3,.1,.4,1) forwards;
+      }
+      .d-you.dissolving .d-text{
+        animation:user-fade 0.8s cubic-bezier(.3,.1,.4,1) forwards;
+      }
       @keyframes haru-dissolve{
         0%   {transform:translateY(0) scale(1);opacity:1;}
-        30%  {transform:translateY(-12vh) scale(0.95);opacity:0.85;}
-        65%  {transform:translateY(-35vh) scale(0.82);opacity:0.3;}
-        100% {transform:translateY(-62vh) scale(0.7);opacity:0;}
+        40%  {transform:translateY(-18vh) scale(0.92);opacity:0.55;}
+        100% {transform:translateY(-45vh) scale(0.78);opacity:0;}
       }
       @keyframes user-fade{
         0%   {transform:translateY(0) scale(1);opacity:1;}
-        100% {transform:translateY(-14vh) scale(0.9);opacity:0;}
+        100% {transform:translateY(-10vh) scale(0.92);opacity:0;}
       }
 
-      /* 手机 fly-stage：简化 mask 梯度（减少合成层计算） */
+      /* 手机 fly-stage：彻底去掉 mask + overflow:hidden 足矣 */
+      /* mask-image 是 iOS Safari 上最贵的合成操作之一 */
       .fly-stage{
-        mask-image:linear-gradient(to bottom,transparent 0,transparent 14vh,black 24vh,black 100%);
-        -webkit-mask-image:linear-gradient(to bottom,transparent 0,transparent 14vh,black 24vh,black 100%);
+        mask-image:none;
+        -webkit-mask-image:none;
+      }
+      /* Clone 的 backdrop-filter 强制关闭（即使桌面设了 12px 也关） */
+      .fly-stage .d-msg .d-text{
+        backdrop-filter:none !important;
+        -webkit-backdrop-filter:none !important;
+        box-shadow:none !important;
       }
 
       /* 手机 ink-mist：关闭漂移动画，静止显示 */
@@ -284,6 +296,9 @@
 
       /* 手机 ambient glows：不要额外的漂移动画 */
       .glow-1,.glow-2{animation:none;}
+
+      /* 手机 .glow-center 呼吸也关掉 —— 用 soul canvas 的呼吸就够了 */
+      .glow-center{animation:none;}
     }
 
     /* Action buttons - nearly invisible */
@@ -797,13 +812,11 @@ class DissolveParticle {
 }
 
 function spawnDissolveParticles(el, style) {
+  // 手机：完全跳过粒子生成 —— CPU/GPU 给 VAD 留着，否则会卡顿
+  if (IS_MOBILE) return;
   const rect = el.getBoundingClientRect();
   const area = rect.width * rect.height;
-  // 手机上大幅减量：~25-70 颗，桌面 50-180 颗
-  const maxCount = IS_MOBILE ? 70 : 180;
-  const minCount = IS_MOBILE ? 25 : 50;
-  const divisor = IS_MOBILE ? 600 : 280;
-  const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
+  const count = Math.min(180, Math.max(50, Math.floor(area / 280)));
   for (let i = 0; i < count; i++) {
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
@@ -1805,14 +1818,13 @@ function dissolveTurn() {
     userClone?.classList.add('dissolving');
   });
 
-  // 动画跑完后清理 DOM
+  // 动画跑完后清理 DOM —— 手机上缩短到 1.2 秒，尽快把主线程还给 VAD
   setTimeout(() => {
     haruClone?.remove();
     userClone?.remove();
-    // 如果 stage 空了，顺便移除
     if (stage && stage.children.length === 0) stage.remove();
     dissolvingInProgress = false;
-  }, 2800);
+  }, IS_MOBILE ? 1200 : 2800);
 }
 
 // ============================================================
