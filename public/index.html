@@ -827,11 +827,13 @@ class DissolveParticle {
 }
 
 function spawnDissolveParticles(el, style) {
-  // 手机：完全跳过粒子生成 —— CPU/GPU 给 VAD 留着，否则会卡顿
-  if (IS_MOBILE) return;
   const rect = el.getBoundingClientRect();
   const area = rect.width * rect.height;
-  const count = Math.min(180, Math.max(50, Math.floor(area / 280)));
+  // 手机粒子压低一些（~30-60 颗），桌面保留原量（50-180 颗）
+  const maxCount = IS_MOBILE ? 60 : 180;
+  const minCount = IS_MOBILE ? 30 : 50;
+  const divisor = IS_MOBILE ? 600 : 280;
+  const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
   for (let i = 0; i < count; i++) {
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
