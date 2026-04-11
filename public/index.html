@@ -841,6 +841,88 @@ function spawnDissolveParticles(el, style) {
   }
 }
 
+// ========== 星星亮闪系统（带十字光芒的 nova 特写）==========
+const starFlashes = [];
+let nextStarFlash = 5000; // 第一颗 5 秒后出现
+
+class StarFlash {
+  constructor() {
+    // 随机位置，避开屏幕正下方（避开 mic / input 栏）
+    this.x = canvas.width * 0.08 + Math.random() * canvas.width * 0.84;
+    this.y = canvas.height * 0.05 + Math.random() * canvas.height * 0.65;
+    this.maxHalo = (IS_MOBILE ? 6 : 10) + Math.random() * (IS_MOBILE ? 6 : 10);
+    this.life = 1;
+    this.decay = 0.011 + Math.random() * 0.005; // 约 1.3-1.7s 生命周期
+    // 色彩：大多白色，偶尔暖金，偶尔冷青
+    const roll = Math.random();
+    this.col = roll < 0.55 ? '255,255,255'
+             : roll < 0.82 ? '255,235,190'
+             : roll < 0.94 ? '200,220,255'
+             : '255,200,150';
+  }
+  update() {
+    this.life -= this.decay;
+  }
+  draw() {
+    if (this.life <= 0) return;
+    // 强度曲线：0→1→0 经过 sin 曲线，在中段达到峰值
+    const progress = 1 - this.life;
+    const intensity = Math.sin(progress * Math.PI);
+    if (intensity <= 0) return;
+    const halo = this.maxHalo * (0.3 + intensity * 0.7);
+    const core = 0.8 + intensity * 1.8;
+
+    // 外层大光晕
+    ctx.fillStyle = `rgba(${this.col},${intensity * 0.08})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, halo * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    // 中层
+    ctx.fillStyle = `rgba(${this.col},${intensity * 0.28})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, halo, 0, Math.PI * 2);
+    ctx.fill();
+    // 核心亮点
+    ctx.fillStyle = `rgba(${this.col},${intensity})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, core, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 十字光芒 —— 强度超过一半才显示，让闪烁感更突出
+    if (intensity > 0.4) {
+      const flareLen = halo * 3.2 * (intensity - 0.4) / 0.6;
+      const flareAlpha = (intensity - 0.4) * 1.2;
+      const grad = ctx.createLinearGradient(
+        this.x - flareLen, this.y, this.x + flareLen, this.y
+      );
+      grad.addColorStop(0, `rgba(${this.col},0)`);
+      grad.addColorStop(0.5, `rgba(${this.col},${flareAlpha})`);
+      grad.addColorStop(1, `rgba(${this.col},0)`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.3;
+      ctx.lineCap = 'round';
+      // 水平光芒
+      ctx.beginPath();
+      ctx.moveTo(this.x - flareLen, this.y);
+      ctx.lineTo(this.x + flareLen, this.y);
+      ctx.stroke();
+      // 垂直光芒
+      const vgrad = ctx.createLinearGradient(
+        this.x, this.y - flareLen, this.x, this.y + flareLen
+      );
+      vgrad.addColorStop(0, `rgba(${this.col},0)`);
+      vgrad.addColorStop(0.5, `rgba(${this.col},${flareAlpha})`);
+      vgrad.addColorStop(1, `rgba(${this.col},0)`);
+      ctx.strokeStyle = vgrad;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y - flareLen);
+      ctx.lineTo(this.x, this.y + flareLen);
+      ctx.stroke();
+    }
+  }
+  get dead() { return this.life <= 0; }
+}
+
 // ========== 流星系统 ==========
 const shootingStars = [];
 let nextShootingStar = 4000; // 第一颗 4 秒后出现
@@ -932,6 +1014,17 @@ function drawPts(t) {
     shootingStars[i].update();
     shootingStars[i].draw();
     if (shootingStars[i].dead) shootingStars.splice(i, 1);
+  }
+
+  // 星星亮闪：平均 7-15 秒一颗
+  if (t >= nextStarFlash) {
+    starFlashes.push(new StarFlash());
+    nextStarFlash = t + 7000 + Math.random() * 8000;
+  }
+  for (let i = starFlashes.length - 1; i >= 0; i--) {
+    starFlashes[i].update();
+    starFlashes[i].draw();
+    if (starFlashes[i].dead) starFlashes.splice(i, 1);
   }
 
   // 消散粒子（Haru 气泡飞向星空）
