@@ -613,27 +613,35 @@ for (let i = 0; i < N; i++) pts.push(new Pt());
 
 // ========== 流星系统 ==========
 const shootingStars = [];
-let nextShootingStar = 0;
+let nextShootingStar = 2000; // 第一颗 2 秒后出现
 
 class ShootingStar {
   constructor() {
-    // 从屏幕上方某个位置向右下方划过
+    // 移动端尺寸较小 → 线稍粗一些，让 DPR>1 的屏幕也看得见
+    const isMobile = Math.min(canvas.width, canvas.height) < 700;
+    // 从屏幕上方某个位置向下方划过
     const fromLeft = Math.random() < 0.5;
-    this.x = fromLeft ? Math.random() * canvas.width * 0.3 : canvas.width * 0.7 + Math.random() * canvas.width * 0.3;
-    this.y = Math.random() * canvas.height * 0.4;
-    // 角度：左上向右下 或 右上向左下
+    this.x = fromLeft
+      ? Math.random() * canvas.width * 0.35
+      : canvas.width * 0.65 + Math.random() * canvas.width * 0.35;
+    this.y = Math.random() * canvas.height * 0.45;
+    // 角度
     const angle = fromLeft
-      ? (Math.PI * 0.15) + Math.random() * (Math.PI * 0.15)  // 15-30°
-      : (Math.PI * 0.7) + Math.random() * (Math.PI * 0.15);  // 125-140°
-    const speed = 6 + Math.random() * 4;
+      ? (Math.PI * 0.16) + Math.random() * (Math.PI * 0.15)
+      : (Math.PI * 0.69) + Math.random() * (Math.PI * 0.15);
+    // 手机上速度按屏幕缩放：小屏慢一点就不会一闪而过
+    const speedBase = isMobile ? 4.5 : 6;
+    const speed = speedBase + Math.random() * 4;
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
     this.life = 1;
-    this.decay = 0.012 + Math.random() * 0.008;
-    this.len = 80 + Math.random() * 60;
+    this.decay = 0.009 + Math.random() * 0.006; // 活得更久一点
+    this.len = (isMobile ? 100 : 120) + Math.random() * 80;
+    this.width = isMobile ? 2.6 : 2.0;       // 手机上更粗
+    this.headR = isMobile ? 3.2 : 2.6;       // 头部更大
     // 颜色：白、淡金、淡青
     const roll = Math.random();
-    this.col = roll < 0.6 ? '255,255,255' : (roll < 0.85 ? '255,240,200' : '180,220,255');
+    this.col = roll < 0.55 ? '255,255,255' : (roll < 0.82 ? '255,240,200' : '180,220,255');
   }
   update() {
     this.x += this.vx;
@@ -646,19 +654,25 @@ class ShootingStar {
     const tailX = this.x - this.vx * (this.len / 8);
     const tailY = this.y - this.vy * (this.len / 8);
     const grad = ctx.createLinearGradient(this.x, this.y, tailX, tailY);
-    grad.addColorStop(0, `rgba(${this.col},${this.life * 0.9})`);
+    grad.addColorStop(0, `rgba(${this.col},${this.life * 0.95})`);
+    grad.addColorStop(0.3, `rgba(${this.col},${this.life * 0.6})`);
     grad.addColorStop(1, `rgba(${this.col},0)`);
     ctx.strokeStyle = grad;
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = this.width;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(this.x, this.y);
     ctx.lineTo(tailX, tailY);
     ctx.stroke();
+    // 头部光晕（外圈柔光）
+    ctx.fillStyle = `rgba(${this.col},${this.life * 0.25})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.headR * 2.2, 0, Math.PI * 2);
+    ctx.fill();
     // 头部亮点
     ctx.fillStyle = `rgba(${this.col},${this.life})`;
     ctx.beginPath();
-    ctx.arc(this.x, this.y, 1.8, 0, Math.PI * 2);
+    ctx.arc(this.x, this.y, this.headR, 0, Math.PI * 2);
     ctx.fill();
   }
   get dead() { return this.life <= 0 || this.x < -200 || this.x > canvas.width + 200 || this.y > canvas.height + 200; }
@@ -670,10 +684,10 @@ function drawPts(t) {
     pts[i].update(t); pts[i].draw();
   }
 
-  // 流星：平均 8-15 秒一颗，idle / listening 时都会出现
+  // 流星：平均 5-10 秒一颗
   if (t >= nextShootingStar) {
     shootingStars.push(new ShootingStar());
-    nextShootingStar = t + 8000 + Math.random() * 7000;
+    nextShootingStar = t + 5000 + Math.random() * 5000;
   }
   for (let i = shootingStars.length - 1; i >= 0; i--) {
     shootingStars[i].update();
@@ -1406,7 +1420,16 @@ async function process(text) {
 
     if (data.response) {
       setState('speaking');
-      await speak(data.response);
+      // 打字机式逐字显示 + 跟读滚动：直接操作刚 render 的 DOM 元素
+      const haruTexts = dlg.querySelectorAll('.d-haru .d-text');
+      const targetEl = haruTexts[haruTexts.length - 1];
+      let reveal = null;
+      if (targetEl) {
+        targetEl.textContent = '';  // 立即清空，等声音来同步
+        reveal = startReveal(targetEl, data.response);
+      }
+      await speak(data.response, dur => reveal?.setDuration(dur));
+      reveal?.complete();
     }
   } catch (err) {
     removeTyping();
@@ -1429,6 +1452,57 @@ async function process(text) {
 }
 
 // ============================================================
+// TEXT REVEAL — 打字机式逐字显示 + 跟读滚动
+// ============================================================
+function startReveal(el, fullText) {
+  const chars = [...fullText];  // 按 code point 切，emoji 安全
+  let i = 0;
+  let handle = null;
+  // 默认速度：~14 字/秒（≈70ms），等声音来再校正
+  let intervalMs = 70;
+  let done = false;
+
+  const scrollDown = () => {
+    // 让 Haru 气泡始终保持在对话框底部
+    dlg.scrollTop = dlg.scrollHeight;
+  };
+
+  const tick = () => {
+    if (i >= chars.length) {
+      clearInterval(handle); handle = null; done = true;
+      return;
+    }
+    el.textContent += chars[i++];
+    scrollDown();
+  };
+
+  const schedule = () => {
+    if (handle) clearInterval(handle);
+    handle = setInterval(tick, intervalMs);
+  };
+
+  schedule();
+
+  return {
+    // 声音加载完成后，用真实时长校正显示速度
+    setDuration(durSec) {
+      if (done || !durSec || !isFinite(durSec) || chars.length === 0) return;
+      const remaining = chars.length - i;
+      if (remaining <= 0) return;
+      intervalMs = Math.max(30, (durSec * 1000) / chars.length);
+      schedule();
+    },
+    complete() {
+      if (handle) clearInterval(handle);
+      handle = null;
+      done = true;
+      el.textContent = fullText;
+      scrollDown();
+    }
+  };
+}
+
+// ============================================================
 // TYPING
 // ============================================================
 function showTyping() {
@@ -1442,7 +1516,7 @@ function removeTyping() { document.getElementById('typ')?.remove(); }
 // ============================================================
 // TTS — 关键修复：done() 只执行一次 + 基于时长的超时
 // ============================================================
-async function speak(text) {
+async function speak(text, onDuration) {
   if (!text) return;
   ap.pause(); ap.currentTime = 0;
   speechSynthesis.cancel();
@@ -1468,12 +1542,20 @@ async function speak(text) {
         ap.onended = null;
         ap.onerror = null;
         ap.ontimeupdate = null;
+        ap.onloadedmetadata = null;
         URL.revokeObjectURL(url);
         resolve();
       };
 
       ap.onended = done;
       ap.onerror = done;
+
+      // 音频 metadata 加载后即知时长 → 告诉打字机校正速度
+      ap.onloadedmetadata = () => {
+        if (onDuration && ap.duration && isFinite(ap.duration)) {
+          onDuration(ap.duration);
+        }
+      };
 
       // 手机 backup: 用 timeupdate 检测是否播完
       ap.ontimeupdate = () => {
@@ -1482,9 +1564,10 @@ async function speak(text) {
 
       ap.src = url;
       ap.play().then(() => {
-        // 基于实际时长设超时，多加 2 秒余量
         const dur = ap.duration;
         if (dur && isFinite(dur)) {
+          // 补一次，防止 onloadedmetadata 在 play 之后触发
+          if (onDuration) onDuration(dur);
           setTimeout(done, (dur + 2) * 1000);
         } else {
           setTimeout(done, 15000);
