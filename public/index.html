@@ -129,13 +129,27 @@
       50%{opacity:1;transform:scale(1.04);text-shadow:0 0 20px rgba(150,180,255,0.55);}
     }
 
-    /* ===== Dialogue area — 极简，只显示当前一轮对话 ===== */
+    /* ===== Dialogue area — 固定到视口，顶部渐变淡出 ===== */
     .dialogue{
-      position:relative;z-index:3;
-      width:100%;max-width:560px;
+      position:fixed;z-index:3;
+      left:50%;transform:translateX(-50%);
+      top:0;bottom:100px;
+      width:calc(100% - 48px);max-width:560px;
       display:flex;flex-direction:column;justify-content:flex-end;
-      gap:14px;padding:24px 0 10px;
-      /* 不再限高、不再滚动 — 气泡自由生长 */
+      gap:14px;padding:0 0 10px;
+      pointer-events:auto;
+      mask-image:linear-gradient(to bottom,
+        transparent 0,
+        transparent 30px,
+        rgba(0,0,0,0.5) 70px,
+        black 110px,
+        black 100%);
+      -webkit-mask-image:linear-gradient(to bottom,
+        transparent 0,
+        transparent 30px,
+        rgba(0,0,0,0.5) 70px,
+        black 110px,
+        black 100%);
     }
 
     /* Messages - semi-transparent dark glassmorphic bubbles */
@@ -227,8 +241,7 @@
     .d-haru{align-items:center;padding:16px 0;}
     .d-haru .d-text{
       display:inline-block;max-width:92%;
-      /* 兜底：就算 Haru 话痨，气泡也不会糊满屏幕 */
-      max-height:42vh;overflow-y:auto;
+      /* 不再限高 —— 气泡沿 .dialogue 的 mask 向上淡入背景 */
       padding:20px 28px;border-radius:26px;
       background:
         linear-gradient(135deg,rgba(220,200,255,0.08),transparent 50%),
@@ -257,7 +270,6 @@
       }
       .d-haru .d-text{
         font-size:18px;padding:16px 20px;line-height:1.65;
-        max-height:36vh;
         backdrop-filter:blur(12px);
         -webkit-backdrop-filter:blur(12px);
       }
@@ -2118,35 +2130,14 @@ function dissolveTurn() {
 // TEXT REVEAL — 打字机式逐字显示 + 开头优先 + 必要时跟读滚动
 // ============================================================
 function startReveal(el, fullText) {
-  const chars = [...fullText];  // 按 code point 切，emoji 安全
+  const chars = [...fullText];
   let i = 0;
   let handle = null;
   let intervalMs = 70;
   let done = false;
 
-  const msgEl = el.closest('.d-msg');
-
-  // 初始：把 Haru 新消息的顶部对齐到对话框顶部（稍带一点内边距）
-  // 这样长消息你能从头读起，不会一上来就看到末尾
-  const alignMsgToTop = () => {
-    if (!msgEl) return;
-    const msgRect = msgEl.getBoundingClientRect();
-    const dlgRect = dlg.getBoundingClientRect();
-    const offset = msgRect.top - dlgRect.top;
-    const target = dlg.scrollTop + offset - 12;
-    dlg.scrollTop = Math.max(0, target);
-  };
-
-  // 跟读滚动：只在新字符快碰到对话框下边时才滚一点
-  const followIfOverflow = () => {
-    if (!msgEl) return;
-    const msgRect = msgEl.getBoundingClientRect();
-    const dlgRect = dlg.getBoundingClientRect();
-    const bottomMargin = 20;
-    if (msgRect.bottom > dlgRect.bottom - bottomMargin) {
-      dlg.scrollTop += (msgRect.bottom - dlgRect.bottom) + bottomMargin + 4;
-    }
-  };
+  // .dialogue 现在是 fixed + 顶部 mask，气泡沿 flex-end 向上生长即可
+  // 不需要滚动操作，超出顶部的部分会被 CSS mask 渐变吞没
 
   const tick = () => {
     if (i >= chars.length) {
@@ -2154,7 +2145,6 @@ function startReveal(el, fullText) {
       return;
     }
     el.textContent += chars[i++];
-    followIfOverflow();
   };
 
   const schedule = () => {
@@ -2162,14 +2152,9 @@ function startReveal(el, fullText) {
     handle = setInterval(tick, intervalMs);
   };
 
-  // 等下一帧，确保清空后的空气泡布局已完成，再对齐顶部
-  requestAnimationFrame(() => {
-    alignMsgToTop();
-    schedule();
-  });
+  schedule();
 
   return {
-    // 声音加载完成后，用真实时长校正显示速度
     setDuration(durSec) {
       if (done || !durSec || !isFinite(durSec) || chars.length === 0) return;
       const remaining = chars.length - i;
@@ -2182,7 +2167,6 @@ function startReveal(el, fullText) {
       handle = null;
       done = true;
       el.textContent = fullText;
-      followIfOverflow();
     }
   };
 }
