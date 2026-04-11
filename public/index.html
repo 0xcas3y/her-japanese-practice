@@ -9,23 +9,40 @@
     *{margin:0;padding:0;box-sizing:border-box}
     body{
       font-family:'Inter','Noto Sans JP',sans-serif;
-      background:#03030a;color:#e8e0d4;
+      background:#000;color:#e8e0d4;
       height:100dvh;overflow:hidden;
       display:flex;flex-direction:column;
       -webkit-user-select:none;user-select:none;
     }
-    /* Deep nebula base: radial midnight blue → pure black */
+    /* 水墨深空：多层晕染 */
     body::before{
-      content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+      content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
       background:
-        radial-gradient(ellipse 80% 60% at 50% 35%,rgba(40,25,80,0.55),transparent 60%),
-        radial-gradient(ellipse 60% 50% at 80% 70%,rgba(20,40,90,0.35),transparent 60%),
-        radial-gradient(ellipse 60% 50% at 15% 80%,rgba(60,20,70,0.3),transparent 60%),
-        #03030a;
+        radial-gradient(ellipse 90% 70% at 50% 38%,rgba(30,45,100,0.55),transparent 60%),
+        radial-gradient(ellipse 70% 55% at 78% 72%,rgba(60,25,110,0.42),transparent 60%),
+        radial-gradient(ellipse 65% 55% at 18% 82%,rgba(25,60,120,0.32),transparent 60%),
+        radial-gradient(ellipse 50% 40% at 30% 18%,rgba(80,40,130,0.22),transparent 60%),
+        #000;
+    }
+    /* Vignette 聚焦中心 — z:1，盖在星空背景之上，在交互元素之下 */
+    body::after{
+      content:'';position:fixed;inset:0;z-index:1;pointer-events:none;
+      background:radial-gradient(ellipse 105% 90% at 50% 42%,transparent 50%,rgba(0,0,0,0.5) 100%);
     }
 
-    /* ===== Full-screen canvas ===== */
-    canvas#c{position:fixed;inset:0;z-index:0;opacity:0.9;}
+    /* ===== Full-screen starfield canvas ===== */
+    canvas#c{position:fixed;inset:0;z-index:0;opacity:1;}
+
+    /* ===== 水墨晕染 SVG 层：中央水墨星云的柔光笔触 ===== */
+    .ink-mist{
+      position:fixed;inset:0;z-index:0;pointer-events:none;
+      opacity:0.85;mix-blend-mode:screen;
+      animation:mist-drift 22s ease-in-out infinite;
+    }
+    @keyframes mist-drift{
+      0%,100%{transform:translate(0,0) scale(1);opacity:0.78;}
+      50%{transform:translate(-12px,8px) scale(1.04);opacity:0.92;}
+    }
 
     /* ===== Ambient glows (dreamy sci-fi palette) ===== */
     .glow{
@@ -96,30 +113,42 @@
     .d-msg{padding:10px 0;animation:text-fade 0.8s ease-out;display:flex;flex-direction:column;}
     @keyframes text-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
-    /* User bubble: right-aligned, cool cyan tint */
+    /* User bubble: 高透磨砂玻璃，右对齐，冷色调 */
     .d-you{align-items:flex-end;}
     .d-you .d-text{
       display:inline-block;max-width:82%;
-      padding:13px 18px;border-radius:20px 20px 4px 20px;
-      background:linear-gradient(135deg,rgba(40,55,95,0.55),rgba(30,40,75,0.45));
-      border:1px solid rgba(140,180,255,0.18);
-      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-      box-shadow:0 4px 24px rgba(60,100,200,0.12),inset 0 1px 0 rgba(180,210,255,0.08);
-      color:rgba(230,240,255,0.95);font-size:17px;font-weight:400;
+      padding:14px 20px;border-radius:22px 22px 6px 22px;
+      background:
+        linear-gradient(135deg,rgba(180,210,255,0.06),transparent 45%),
+        linear-gradient(135deg,rgba(20,30,60,0.42),rgba(15,20,45,0.32));
+      border:1px solid rgba(150,190,255,0.18);
+      backdrop-filter:blur(22px) saturate(140%);
+      -webkit-backdrop-filter:blur(22px) saturate(140%);
+      box-shadow:
+        0 8px 32px rgba(20,40,120,0.28),
+        inset 0 1px 0 rgba(200,220,255,0.12),
+        inset 0 -1px 0 rgba(100,140,220,0.05);
+      color:rgba(235,245,255,0.96);font-size:17px;font-weight:400;
       letter-spacing:0.3px;line-height:1.6;text-align:left;
     }
 
-    /* Haru bubble: centered, ethereal violet tint */
-    .d-haru{align-items:center;padding:14px 0;}
+    /* Haru bubble: 更宽的玻璃面板，中心、紫罗兰调 */
+    .d-haru{align-items:center;padding:16px 0;}
     .d-haru .d-text{
       display:inline-block;max-width:92%;
-      padding:18px 24px;border-radius:22px;
-      background:linear-gradient(135deg,rgba(50,35,80,0.55),rgba(30,25,60,0.45));
-      border:1px solid rgba(180,150,255,0.18);
-      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-      box-shadow:0 6px 32px rgba(120,90,220,0.14),inset 0 1px 0 rgba(200,180,255,0.08);
+      padding:20px 28px;border-radius:26px;
+      background:
+        linear-gradient(135deg,rgba(220,200,255,0.08),transparent 50%),
+        linear-gradient(135deg,rgba(30,20,55,0.44),rgba(15,10,35,0.34));
+      border:1px solid rgba(190,160,255,0.2);
+      backdrop-filter:blur(26px) saturate(150%);
+      -webkit-backdrop-filter:blur(26px) saturate(150%);
+      box-shadow:
+        0 10px 42px rgba(80,50,180,0.25),
+        inset 0 1px 0 rgba(220,200,255,0.14),
+        0 0 70px rgba(140,100,220,0.1);
       color:rgba(250,245,255,0.98);font-size:23px;font-weight:400;
-      line-height:1.8;letter-spacing:0.3px;text-align:center;
+      line-height:1.85;letter-spacing:0.4px;text-align:center;
     }
 
     /* Action buttons - nearly invisible */
@@ -341,6 +370,52 @@
 <body>
 
 <canvas id="c"></canvas>
+
+<!-- 水墨晕染层：三层柔光笔触，模拟水墨星云晕染 -->
+<svg class="ink-mist" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="inkCore" cx="50%" cy="42%" r="42%">
+      <stop offset="0%" stop-color="rgba(160,180,255,0.35)"/>
+      <stop offset="22%" stop-color="rgba(120,100,220,0.28)"/>
+      <stop offset="50%" stop-color="rgba(60,80,180,0.15)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+    <radialGradient id="inkWarm" cx="50%" cy="42%" r="15%">
+      <stop offset="0%" stop-color="rgba(255,220,170,0.35)"/>
+      <stop offset="60%" stop-color="rgba(220,150,120,0.12)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+    <radialGradient id="inkCyan" cx="30%" cy="35%" r="30%">
+      <stop offset="0%" stop-color="rgba(100,200,230,0.22)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+    <radialGradient id="inkViolet" cx="70%" cy="50%" r="32%">
+      <stop offset="0%" stop-color="rgba(180,120,220,0.22)"/>
+      <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+    <filter id="inkBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+  <!-- 大片蓝紫星云主体 -->
+  <rect width="1000" height="1000" fill="url(#inkCore)"/>
+  <!-- 冷色侧晕 -->
+  <rect width="1000" height="1000" fill="url(#inkCyan)"/>
+  <!-- 紫色侧晕 -->
+  <rect width="1000" height="1000" fill="url(#inkViolet)"/>
+  <!-- 温暖的银河核心 -->
+  <rect width="1000" height="1000" fill="url(#inkWarm)"/>
+  <!-- 水墨笔触弧线：飞流的银河 -->
+  <g filter="url(#inkBlur)" opacity="0.4">
+    <path d="M 200 520 Q 420 380 520 420 T 820 400"
+          stroke="rgba(180,200,255,0.5)" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M 180 560 Q 400 440 540 460 T 850 450"
+          stroke="rgba(140,160,230,0.35)" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M 250 580 Q 480 500 600 510 T 800 520"
+          stroke="rgba(200,180,255,0.3)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
+
 <div class="glow glow-1 on"></div>
 <div class="glow glow-2 on"></div>
 <div class="glow glow-center"></div>
@@ -418,7 +493,7 @@ let audioUnlocked = false;
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const pts = [];
-const N = 100;
+const N = 200;  // 加密：从 100 → 200 颗
 let cx, cy;
 
 function resizeCanvas() {
@@ -433,20 +508,21 @@ class Pt {
   spawn() {
     this.x = Math.random() * canvas.width;
     this.y = Math.random() * canvas.height;
-    this.sz = Math.random() * 1.4 + 0.2;
+    this.sz = Math.random() * 1.3 + 0.18;  // 更细碎
     this.baseSz = this.sz;
-    this.vx = (Math.random() - 0.5) * 0.15;
-    this.vy = (Math.random() - 0.5) * 0.15;
-    this.a = Math.random() * 0.55 + 0.15;
+    this.vx = (Math.random() - 0.5) * 0.1;  // 更慢的漂移
+    this.vy = (Math.random() - 0.5) * 0.1;
+    this.a = Math.random() * 0.55 + 0.12;
     this.ba = this.a;
     this.ph = Math.random() * Math.PI * 2;
-    // Star color: mostly white, some cool blue, rare warm
+    // Star color: 白 / 淡金 / 冷蓝 — 水墨星尘的色调
     const roll = Math.random();
-    if (roll < 0.7)      this.col = '255,255,255';   // white stars
-    else if (roll < 0.9) this.col = '170,200,255';   // blue-white
-    else                 this.col = '255,220,180';   // warm amber
-    // Twinkle speed
-    this.twSpeed = 0.003 + Math.random() * 0.008;
+    if (roll < 0.55)      this.col = '255,255,255';   // 纯白星尘
+    else if (roll < 0.78) this.col = '255,240,200';   // 淡金
+    else if (roll < 0.92) this.col = '180,200,255';   // 冷蓝白
+    else                  this.col = '255,200,140';   // 少量暖金
+    // Twinkle speed — 有些很慢，像静止的，有些闪烁
+    this.twSpeed = 0.002 + Math.random() * 0.006;
   }
   update(t) {
     this.ph += this.twSpeed;
@@ -555,19 +631,20 @@ function resizeSoul() {
 resizeSoul();
 addEventListener('resize', resizeSoul);
 
-const GALAXY_COUNT = 350;
+const GALAXY_COUNT = 550;  // 加密：350 → 550
 const galaxy = [];
 
-// 粒子颜色组
+// 粒子颜色组 — 水墨银河色调：冷蓝紫主体 + 暖金核心点缀
 const COLORS = [
-  { r:140, g:160, b:255 }, // 冷蓝
-  { r:100, g:140, b:255 }, // 深蓝
-  { r:180, g:200, b:255 }, // 浅蓝白
   { r:255, g:255, b:255 }, // 纯白
-  { r:255, g:200, b:150 }, // 暖橙
-  { r:255, g:120, b:100 }, // 红
-  { r:255, g:220, b:100 }, // 金黄
-  { r:200, g:180, b:255 }, // 紫
+  { r:200, g:220, b:255 }, // 浅蓝白
+  { r:140, g:170, b:255 }, // 冷蓝
+  { r:100, g:130, b:230 }, // 深蓝
+  { r:180, g:150, b:230 }, // 淡紫
+  { r:140, g:110, b:200 }, // 深紫
+  { r:120, g:200, b:220 }, // 青
+  { r:255, g:230, b:180 }, // 淡金
+  { r:255, g:200, b:130 }, // 暖金
 ];
 
 class GalaxyPt {
@@ -575,29 +652,36 @@ class GalaxyPt {
     this.spawn();
   }
   spawn() {
-    // 椭圆星云分布
+    // 椭圆星云分布 — 让外围更散、中心更浓（水墨晕染效果）
     const angle = Math.random() * Math.PI * 2;
-    const dist = Math.pow(Math.random(), 0.6) * 0.4; // 集中在中心
-    this.baseX = 0.5 + Math.cos(angle) * dist * 1.3; // 横向拉伸
-    this.baseY = 0.42 + Math.sin(angle) * dist * 0.7; // 纵向压缩，偏上
+    const dist = Math.pow(Math.random(), 0.75) * 0.46; // 中心更浓
+    this.baseX = 0.5 + Math.cos(angle) * dist * 1.35;
+    this.baseY = 0.42 + Math.sin(angle) * dist * 0.72;
     this.x = this.baseX;
     this.y = this.baseY;
-    this.size = Math.random() * 2.2 + 0.3;
+    this.size = Math.random() * 2 + 0.25;
     this.baseSize = this.size;
-    this.col = COLORS[Math.floor(Math.random() * COLORS.length)];
-    // 远离中心的粒子更蓝，中心偏暖
-    if (dist < 0.15) {
-      this.col = COLORS[Math.random() < 0.5 ? 4 : 6]; // 暖色中心
-    } else if (dist > 0.3) {
-      this.col = COLORS[Math.floor(Math.random() * 3)]; // 蓝色外围
+    // 色彩分层：核心暖金 → 内层紫 → 中层蓝紫 → 外围冷蓝白
+    if (dist < 0.1) {
+      // 核心：暖金 + 少量纯白
+      this.col = COLORS[Math.random() < 0.55 ? 7 : (Math.random() < 0.6 ? 0 : 8)];
+    } else if (dist < 0.18) {
+      // 内层：淡紫 + 暖金点缀
+      this.col = COLORS[Math.random() < 0.4 ? 4 : (Math.random() < 0.3 ? 7 : 1)];
+    } else if (dist < 0.28) {
+      // 中层：蓝紫 + 青
+      this.col = COLORS[Math.random() < 0.4 ? 2 : (Math.random() < 0.5 ? 5 : 6)];
+    } else {
+      // 外围：冷蓝 + 白
+      this.col = COLORS[Math.random() < 0.35 ? 3 : (Math.random() < 0.5 ? 2 : 1)];
     }
-    this.alpha = Math.random() * 0.6 + 0.1;
+    this.alpha = Math.random() * 0.55 + 0.1;
     this.baseAlpha = this.alpha;
     this.phase = Math.random() * Math.PI * 2;
-    this.speed = 0.001 + Math.random() * 0.003;
-    this.driftX = (Math.random() - 0.5) * 0.002;
-    this.driftY = (Math.random() - 0.5) * 0.001;
-    this.orbitSpeed = (Math.random() - 0.5) * 0.0003;
+    this.speed = 0.0008 + Math.random() * 0.0022; // 更慢
+    this.driftX = (Math.random() - 0.5) * 0.0018;
+    this.driftY = (Math.random() - 0.5) * 0.0009;
+    this.orbitSpeed = (Math.random() - 0.5) * 0.00025;
     this.orbitAngle = angle;
     this.orbitR = dist;
   }
@@ -667,24 +751,48 @@ for (let i = 0; i < GALAXY_COUNT; i++) galaxy.push(new GalaxyPt());
 function drawSoul(t) {
   sCtx.clearRect(0, 0, SW, SH);
 
-  // 中心星云光晕 — 说话/聆听时随呼吸脉动
-  let ca, breathScale = 1;
+  // 中心星云光晕 — 水墨多层晕染 + 呼吸脉动
+  let intensity, breathScale = 1;
   if (aiState === 'speaking') {
-    ca = 0.045 + Math.sin(t * 0.0012) * 0.015; // ~5s 呼吸
+    intensity = 1 + Math.sin(t * 0.0012) * 0.35; // ~5s 呼吸
     breathScale = 1 + Math.sin(t * 0.0012) * 0.05;
   } else if (aiState === 'listening') {
-    // 明显的呼吸渐变：从很淡 → 稍亮，~7s 一个周期
-    const b = (Math.sin(t * 0.0009) + 1) / 2; // 0..1
-    ca = 0.012 + b * 0.035;                    // 0.012..0.047
-    breathScale = 0.9 + b * 0.15;              // 0.9..1.05
+    const b = (Math.sin(t * 0.0009) + 1) / 2;
+    intensity = 0.55 + b * 0.85;
+    breathScale = 0.9 + b * 0.15;
   } else {
-    ca = 0.015;
+    intensity = 0.55 + Math.sin(t * 0.0006) * 0.1;
   }
-  const grad = sCtx.createRadialGradient(SW * 0.5, SH * 0.42, 0, SW * 0.5, SH * 0.42, SW * 0.35 * breathScale);
-  grad.addColorStop(0, `rgba(120,140,255,${ca})`);
-  grad.addColorStop(0.4, `rgba(180,140,200,${ca * 0.5})`);
-  grad.addColorStop(1, 'transparent');
-  sCtx.fillStyle = grad;
+
+  // Layer 1 — 大片紫蓝水墨（外层晕染）
+  const g1 = sCtx.createRadialGradient(SW * 0.5, SH * 0.42, 0, SW * 0.5, SH * 0.42, SW * 0.45 * breathScale);
+  g1.addColorStop(0, `rgba(90,110,220,${0.07 * intensity})`);
+  g1.addColorStop(0.35, `rgba(120,90,200,${0.05 * intensity})`);
+  g1.addColorStop(0.7, `rgba(50,40,120,${0.02 * intensity})`);
+  g1.addColorStop(1, 'transparent');
+  sCtx.fillStyle = g1;
+  sCtx.fillRect(0, 0, SW, SH);
+
+  // Layer 2 — 青色侧晕（偏上左）
+  const g2 = sCtx.createRadialGradient(SW * 0.42, SH * 0.36, 0, SW * 0.42, SH * 0.36, SW * 0.32 * breathScale);
+  g2.addColorStop(0, `rgba(100,200,230,${0.06 * intensity})`);
+  g2.addColorStop(1, 'transparent');
+  sCtx.fillStyle = g2;
+  sCtx.fillRect(0, 0, SW, SH);
+
+  // Layer 3 — 紫色侧晕（偏下右）
+  const g3 = sCtx.createRadialGradient(SW * 0.58, SH * 0.48, 0, SW * 0.58, SH * 0.48, SW * 0.3 * breathScale);
+  g3.addColorStop(0, `rgba(180,110,220,${0.055 * intensity})`);
+  g3.addColorStop(1, 'transparent');
+  sCtx.fillStyle = g3;
+  sCtx.fillRect(0, 0, SW, SH);
+
+  // Layer 4 — 核心暖金（银河中心）
+  const g4 = sCtx.createRadialGradient(SW * 0.5, SH * 0.42, 0, SW * 0.5, SH * 0.42, SW * 0.12 * breathScale);
+  g4.addColorStop(0, `rgba(255,220,160,${0.1 * intensity})`);
+  g4.addColorStop(0.6, `rgba(255,180,120,${0.04 * intensity})`);
+  g4.addColorStop(1, 'transparent');
+  sCtx.fillStyle = g4;
   sCtx.fillRect(0, 0, SW, SH);
 
   galaxy.forEach(p => { p.update(t); p.draw(); });
