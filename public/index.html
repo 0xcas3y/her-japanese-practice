@@ -9,24 +9,37 @@
     *{margin:0;padding:0;box-sizing:border-box}
     body{
       font-family:'Inter','Noto Sans JP',sans-serif;
-      background:#050508;color:#e8e0d4;
+      background:#03030a;color:#e8e0d4;
       height:100dvh;overflow:hidden;
       display:flex;flex-direction:column;
       -webkit-user-select:none;user-select:none;
     }
+    /* Deep nebula base: radial midnight blue → pure black */
+    body::before{
+      content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 35%,rgba(40,25,80,0.55),transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 70%,rgba(20,40,90,0.35),transparent 60%),
+        radial-gradient(ellipse 60% 50% at 15% 80%,rgba(60,20,70,0.3),transparent 60%),
+        #03030a;
+    }
 
     /* ===== Full-screen canvas ===== */
-    canvas#c{position:fixed;inset:0;z-index:0;opacity:0.15;}
+    canvas#c{position:fixed;inset:0;z-index:0;opacity:0.9;}
 
-    /* ===== Ambient glows ===== */
+    /* ===== Ambient glows (dreamy sci-fi palette) ===== */
     .glow{
-      position:fixed;border-radius:50%;filter:blur(100px);opacity:0;
+      position:fixed;border-radius:50%;filter:blur(120px);opacity:0;
       transition:opacity 3s ease;pointer-events:none;z-index:0;
     }
-    .glow.on{opacity:0.5;}
-    .glow-1{width:400px;height:400px;background:radial-gradient(circle,rgba(255,100,60,0.08),transparent 70%);top:-80px;left:-80px;}
-    .glow-2{width:300px;height:300px;background:radial-gradient(circle,rgba(255,160,100,0.06),transparent 70%);bottom:-60px;right:-60px;}
-    .glow-center{width:350px;height:350px;background:radial-gradient(circle,rgba(255,140,80,0.05),transparent 60%);top:50%;left:50%;transform:translate(-50%,-50%);}
+    .glow.on{opacity:0.7;}
+    .glow-1{width:460px;height:460px;background:radial-gradient(circle,rgba(120,90,255,0.18),transparent 70%);top:-120px;left:-120px;}
+    .glow-2{width:360px;height:360px;background:radial-gradient(circle,rgba(80,180,255,0.14),transparent 70%);bottom:-80px;right:-80px;}
+    .glow-center{width:420px;height:420px;background:radial-gradient(circle,rgba(140,120,255,0.10),transparent 60%);top:42%;left:50%;transform:translate(-50%,-50%);animation:glow-breathe 6s ease-in-out infinite;}
+    @keyframes glow-breathe{
+      0%,100%{transform:translate(-50%,-50%) scale(1);opacity:0.7;}
+      50%{transform:translate(-50%,-50%) scale(1.12);opacity:0.9;}
+    }
 
     /* ===== Layout ===== */
     .scene{
@@ -62,17 +75,34 @@
       -webkit-mask-image:linear-gradient(to bottom,transparent,black 20px,black calc(100% - 20px),transparent);
     }
 
-    /* Messages - floating text, no bubbles */
-    .d-msg{padding:14px 0;animation:text-fade 0.8s ease-out;}
+    /* Messages - semi-transparent dark glassmorphic bubbles */
+    .d-msg{padding:10px 0;animation:text-fade 0.8s ease-out;display:flex;flex-direction:column;}
     @keyframes text-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
-    .d-you{text-align:right;}
-    .d-you .d-text{color:rgba(255,255,255,0.55);font-size:16px;font-weight:300;letter-spacing:0.5px;}
+    /* User bubble: right-aligned, cool cyan tint */
+    .d-you{align-items:flex-end;}
+    .d-you .d-text{
+      display:inline-block;max-width:82%;
+      padding:11px 16px;border-radius:20px 20px 4px 20px;
+      background:linear-gradient(135deg,rgba(40,55,95,0.55),rgba(30,40,75,0.45));
+      border:1px solid rgba(140,180,255,0.18);
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      box-shadow:0 4px 24px rgba(60,100,200,0.12),inset 0 1px 0 rgba(180,210,255,0.08);
+      color:rgba(225,235,255,0.92);font-size:15px;font-weight:300;
+      letter-spacing:0.3px;line-height:1.55;text-align:left;
+    }
 
-    .d-haru{text-align:center;padding:18px 0;}
+    /* Haru bubble: centered, ethereal violet tint */
+    .d-haru{align-items:center;padding:14px 0;}
     .d-haru .d-text{
-      color:rgba(240,235,225,0.95);font-size:22px;font-weight:300;
-      line-height:1.8;letter-spacing:0.3px;
+      display:inline-block;max-width:92%;
+      padding:16px 22px;border-radius:22px;
+      background:linear-gradient(135deg,rgba(50,35,80,0.55),rgba(30,25,60,0.45));
+      border:1px solid rgba(180,150,255,0.18);
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      box-shadow:0 6px 32px rgba(120,90,220,0.14),inset 0 1px 0 rgba(200,180,255,0.08);
+      color:rgba(245,240,255,0.96);font-size:20px;font-weight:300;
+      line-height:1.75;letter-spacing:0.3px;text-align:center;
     }
 
     /* Action buttons - nearly invisible */
@@ -386,38 +416,53 @@ class Pt {
   spawn() {
     this.x = Math.random() * canvas.width;
     this.y = Math.random() * canvas.height;
-    this.sz = Math.random() * 1.8 + 0.3;
+    this.sz = Math.random() * 1.4 + 0.2;
     this.baseSz = this.sz;
-    this.vx = (Math.random() - 0.5) * 0.2;
-    this.vy = (Math.random() - 0.5) * 0.2;
-    this.a = Math.random() * 0.3 + 0.05;
+    this.vx = (Math.random() - 0.5) * 0.15;
+    this.vy = (Math.random() - 0.5) * 0.15;
+    this.a = Math.random() * 0.55 + 0.15;
     this.ba = this.a;
     this.ph = Math.random() * Math.PI * 2;
+    // Star color: mostly white, some cool blue, rare warm
+    const roll = Math.random();
+    if (roll < 0.7)      this.col = '255,255,255';   // white stars
+    else if (roll < 0.9) this.col = '170,200,255';   // blue-white
+    else                 this.col = '255,220,180';   // warm amber
+    // Twinkle speed
+    this.twSpeed = 0.003 + Math.random() * 0.008;
   }
   update(t) {
-    this.ph += 0.005;
+    this.ph += this.twSpeed;
+    // Twinkle baseline (all states)
+    const twinkle = Math.sin(this.ph) * 0.35;
     if (aiState === 'speaking') {
-      this.x += (cx - this.x) * 0.003;
-      this.y += (cy - this.y) * 0.003;
-      this.a = this.ba + Math.sin(t * 0.008 + this.ph) * 0.25 + 0.15;
-      this.sz = this.baseSz + Math.sin(t * 0.01 + this.ph) * 0.5;
+      // 只保留星空的轻微呼吸，不要向中心汇聚
+      this.x += this.vx * 0.3;
+      this.y += this.vy * 0.3;
+      const breath = Math.sin(t * 0.0012 + this.ph * 0.3) * 0.12;
+      this.a = this.ba + twinkle + breath;
+      this.sz = this.baseSz + breath * 0.3;
+      if (this.x < 0) this.x = canvas.width;
+      if (this.x > canvas.width) this.x = 0;
+      if (this.y < 0) this.y = canvas.height;
+      if (this.y > canvas.height) this.y = 0;
     } else if (aiState === 'listening') {
-      this.x += (cx - this.x) * 0.001;
-      this.y += (cy - this.y) * 0.001;
-      this.a = this.ba + Math.sin(t * 0.005 + this.ph) * 0.1;
+      this.x += (cx - this.x) * 0.0008;
+      this.y += (cy - this.y) * 0.0008;
+      this.a = this.ba + twinkle + Math.sin(t * 0.005 + this.ph) * 0.1;
       this.sz = this.baseSz;
     } else if (aiState === 'thinking') {
       const dx = this.x - cx, dy = this.y - cy;
-      const ang = 0.0005;
+      const ang = 0.0004;
       this.x = cx + dx * Math.cos(ang) - dy * Math.sin(ang);
       this.y = cy + dx * Math.sin(ang) + dy * Math.cos(ang);
-      this.a = this.ba + Math.sin(t * 0.003) * 0.08;
+      this.a = this.ba + twinkle * 0.7;
       this.sz = this.baseSz;
     } else {
-      this.x += this.vx + Math.sin(this.ph) * 0.05;
-      this.y += this.vy + Math.cos(this.ph) * 0.05;
-      this.a = this.ba + Math.sin(this.ph) * 0.03;
-      this.sz = this.baseSz;
+      this.x += this.vx + Math.sin(this.ph) * 0.04;
+      this.y += this.vy + Math.cos(this.ph) * 0.04;
+      this.a = this.ba + twinkle;
+      this.sz = this.baseSz + Math.sin(this.ph * 1.5) * 0.2;
       if (this.x < 0) this.x = canvas.width;
       if (this.x > canvas.width) this.x = 0;
       if (this.y < 0) this.y = canvas.height;
@@ -425,9 +470,19 @@ class Pt {
     }
   }
   draw() {
+    const alpha = Math.max(0, Math.min(1, this.a));
+    const s = Math.max(0.15, this.sz);
+    // Glow halo for brighter stars
+    if (s > 0.9) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, s * 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${this.col},${alpha * 0.15})`;
+      ctx.fill();
+    }
+    // Core
     ctx.beginPath();
-    ctx.arc(this.x, this.y, Math.max(0.2, this.sz), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,176,136,${Math.max(0, Math.min(1, this.a))})`;
+    ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${this.col},${alpha})`;
     ctx.fill();
   }
 }
@@ -438,17 +493,22 @@ function drawPts(t) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < N; i++) {
     pts[i].update(t); pts[i].draw();
-    for (let j = i + 1; j < N; j++) {
-      const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < 15000) {
-        const a = (1 - d2 / 15000) * (aiState === 'speaking' ? 0.12 : 0.04);
-        ctx.strokeStyle = `rgba(255,176,136,${a})`;
-        ctx.lineWidth = 0.4;
-        ctx.beginPath();
-        ctx.moveTo(pts[i].x, pts[i].y);
-        ctx.lineTo(pts[j].x, pts[j].y);
-        ctx.stroke();
+  }
+  // Constellation lines only when AI is speaking (subtle network effect)
+  if (aiState === 'speaking' || aiState === 'thinking') {
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < 12000) {
+          const a = (1 - d2 / 12000) * (aiState === 'speaking' ? 0.08 : 0.04);
+          ctx.strokeStyle = `rgba(160,200,255,${a})`;
+          ctx.lineWidth = 0.35;
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+          ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.stroke();
+        }
       }
     }
   }
@@ -530,14 +590,14 @@ class GalaxyPt {
       this.alpha = this.baseAlpha + Math.sin(t * 0.005 + this.phase) * 0.25;
       this.size = this.baseSize + Math.sin(t * 0.004 + this.orbitAngle) * 0.5;
     } else if (aiState === 'speaking') {
-      // 有节奏的扩缩脉动 + 快速旋转
-      this.orbitAngle += 0.006;
-      const pulse = Math.sin(t * 0.01) * 0.06;
-      const wave = Math.sin(this.orbitAngle * 6 + t * 0.006) * 0.02;
-      this.x = 0.5 + Math.cos(this.orbitAngle) * (this.orbitR * 1.3 + pulse + wave);
-      this.y = 0.42 + Math.sin(this.orbitAngle) * (this.orbitR * 0.7 + pulse * 0.5);
-      this.alpha = this.baseAlpha + Math.abs(Math.sin(t * 0.008 + this.phase)) * 0.4;
-      this.size = this.baseSize + Math.abs(Math.sin(t * 0.012 + this.phase)) * 1.2;
+      // 缓慢呼吸 + 柔和波动，~5秒一个周期
+      this.orbitAngle += 0.0015;
+      const breath = Math.sin(t * 0.0012) * 0.035; // slow ~5s breath
+      const ripple = Math.sin(this.orbitAngle * 3 + t * 0.0015) * 0.008; // gentle wave
+      this.x = 0.5 + Math.cos(this.orbitAngle) * (this.orbitR * 1.3 + breath + ripple);
+      this.y = 0.42 + Math.sin(this.orbitAngle) * (this.orbitR * 0.7 + breath * 0.6);
+      this.alpha = this.baseAlpha + Math.sin(t * 0.0012 + this.phase * 0.3) * 0.12;
+      this.size = this.baseSize + Math.sin(t * 0.0012 + this.phase * 0.3) * 0.25;
     } else if (aiState === 'thinking') {
       // 缓慢聚拢旋转
       this.orbitAngle += 0.004;
@@ -583,9 +643,17 @@ for (let i = 0; i < GALAXY_COUNT; i++) galaxy.push(new GalaxyPt());
 function drawSoul(t) {
   sCtx.clearRect(0, 0, SW, SH);
 
-  // 中心星云光晕
-  const ca = aiState === 'speaking' ? 0.06 : aiState === 'listening' ? 0.04 : 0.015;
-  const grad = sCtx.createRadialGradient(SW * 0.5, SH * 0.42, 0, SW * 0.5, SH * 0.42, SW * 0.35);
+  // 中心星云光晕 — 说话时随呼吸脉动
+  let ca;
+  if (aiState === 'speaking') {
+    ca = 0.045 + Math.sin(t * 0.0012) * 0.015; // 同步 ~5s 呼吸
+  } else if (aiState === 'listening') {
+    ca = 0.035 + Math.sin(t * 0.002) * 0.01;
+  } else {
+    ca = 0.015;
+  }
+  const breathScale = aiState === 'speaking' ? (1 + Math.sin(t * 0.0012) * 0.05) : 1;
+  const grad = sCtx.createRadialGradient(SW * 0.5, SH * 0.42, 0, SW * 0.5, SH * 0.42, SW * 0.35 * breathScale);
   grad.addColorStop(0, `rgba(120,140,255,${ca})`);
   grad.addColorStop(0.4, `rgba(180,140,200,${ca * 0.5})`);
   grad.addColorStop(1, 'transparent');
