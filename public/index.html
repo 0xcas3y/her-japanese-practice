@@ -16,14 +16,14 @@
     }
 
     /* ===== Full-screen canvas ===== */
-    canvas{position:fixed;inset:0;z-index:0;}
+    canvas#c{position:fixed;inset:0;z-index:0;opacity:0.15;}
 
     /* ===== Ambient glows ===== */
     .glow{
       position:fixed;border-radius:50%;filter:blur(100px);opacity:0;
-      transition:opacity 3s ease;pointer-events:none;z-index:1;
+      transition:opacity 3s ease;pointer-events:none;z-index:0;
     }
-    .glow.on{opacity:1;}
+    .glow.on{opacity:0.5;}
     .glow-1{width:400px;height:400px;background:radial-gradient(circle,rgba(255,100,60,0.08),transparent 70%);top:-80px;left:-80px;}
     .glow-2{width:300px;height:300px;background:radial-gradient(circle,rgba(255,160,100,0.06),transparent 70%);bottom:-60px;right:-60px;}
     .glow-center{width:350px;height:350px;background:radial-gradient(circle,rgba(255,140,80,0.05),transparent 60%);top:50%;left:50%;transform:translate(-50%,-50%);}
@@ -31,33 +31,35 @@
     /* ===== Layout ===== */
     .scene{
       position:relative;z-index:2;flex:1;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      padding:50px 24px 50px;overflow:hidden;
+      display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+      padding:0 24px 40px;overflow:hidden;
     }
 
     /* ===== Soul visualizer ===== */
     .soul{
-      position:relative;width:200px;height:200px;
+      position:absolute;inset:0;
       cursor:pointer;-webkit-tap-highlight-color:transparent;
-      flex-shrink:0;
+      z-index:1;
     }
     .soul canvas{width:100%;height:100%;}
 
     /* ===== Soul label ===== */
     .soul-label{
-      margin-top:20px;font-size:10px;font-weight:200;
+      position:relative;z-index:3;
+      margin-top:0;margin-bottom:8px;font-size:10px;font-weight:200;
       letter-spacing:8px;text-transform:uppercase;
-      color:rgba(255,176,136,0.35);transition:all 0.6s;
+      color:rgba(200,210,230,0.35);transition:all 0.6s;
       flex-shrink:0;text-align:center;
     }
 
     /* ===== Dialogue area ===== */
     .dialogue{
-      flex:1;width:100%;max-width:520px;
+      position:relative;z-index:3;
+      width:100%;max-width:520px;max-height:40vh;
       display:flex;flex-direction:column;justify-content:flex-end;
-      padding:30px 0 10px;overflow-y:auto;
-      mask-image:linear-gradient(to bottom,transparent,black 40px,black calc(100% - 20px),transparent);
-      -webkit-mask-image:linear-gradient(to bottom,transparent,black 40px,black calc(100% - 20px),transparent);
+      padding:20px 0 10px;overflow-y:auto;
+      mask-image:linear-gradient(to bottom,transparent,black 20px,black calc(100% - 20px),transparent);
+      -webkit-mask-image:linear-gradient(to bottom,transparent,black 20px,black calc(100% - 20px),transparent);
     }
 
     /* Messages - floating text, no bubbles */
@@ -455,125 +457,142 @@ function drawPts(t) {
 requestAnimationFrame(drawPts);
 
 // ============================================================
-// SOUL VISUALIZER — 电波粒子系统
+// SOUL VISUALIZER — 银河粒子系统
 // ============================================================
 const soulCanvas = document.getElementById('soulCanvas');
 const sCtx = soulCanvas.getContext('2d');
-const SC = 400; // canvas size
-const sCx = SC / 2, sCy = SC / 2;
-const SOUL_PARTICLES = 80;
-const soulPts = [];
+let SW, SH;
 
-class SoulPt {
-  constructor(i) {
-    this.i = i;
-    this.angle = (i / SOUL_PARTICLES) * Math.PI * 2;
-    this.baseR = 50 + Math.random() * 30;
-    this.r = this.baseR;
-    this.size = Math.random() * 2 + 0.8;
-    this.speed = 0.002 + Math.random() * 0.003;
-    this.drift = Math.random() * 40 - 20;
+function resizeSoul() {
+  const r = window.devicePixelRatio || 1;
+  SW = soul.clientWidth; SH = soul.clientHeight;
+  soulCanvas.width = SW * r; soulCanvas.height = SH * r;
+  sCtx.scale(r, r);
+}
+resizeSoul();
+addEventListener('resize', resizeSoul);
+
+const GALAXY_COUNT = 350;
+const galaxy = [];
+
+// 粒子颜色组
+const COLORS = [
+  { r:140, g:160, b:255 }, // 冷蓝
+  { r:100, g:140, b:255 }, // 深蓝
+  { r:180, g:200, b:255 }, // 浅蓝白
+  { r:255, g:255, b:255 }, // 纯白
+  { r:255, g:200, b:150 }, // 暖橙
+  { r:255, g:120, b:100 }, // 红
+  { r:255, g:220, b:100 }, // 金黄
+  { r:200, g:180, b:255 }, // 紫
+];
+
+class GalaxyPt {
+  constructor() {
+    this.spawn();
+  }
+  spawn() {
+    // 椭圆星云分布
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.pow(Math.random(), 0.6) * 0.4; // 集中在中心
+    this.baseX = 0.5 + Math.cos(angle) * dist * 1.3; // 横向拉伸
+    this.baseY = 0.42 + Math.sin(angle) * dist * 0.7; // 纵向压缩，偏上
+    this.x = this.baseX;
+    this.y = this.baseY;
+    this.size = Math.random() * 2.2 + 0.3;
+    this.baseSize = this.size;
+    this.col = COLORS[Math.floor(Math.random() * COLORS.length)];
+    // 远离中心的粒子更蓝，中心偏暖
+    if (dist < 0.15) {
+      this.col = COLORS[Math.random() < 0.5 ? 4 : 6]; // 暖色中心
+    } else if (dist > 0.3) {
+      this.col = COLORS[Math.floor(Math.random() * 3)]; // 蓝色外围
+    }
+    this.alpha = Math.random() * 0.6 + 0.1;
+    this.baseAlpha = this.alpha;
     this.phase = Math.random() * Math.PI * 2;
-    this.alpha = 0.3 + Math.random() * 0.4;
+    this.speed = 0.001 + Math.random() * 0.003;
+    this.driftX = (Math.random() - 0.5) * 0.002;
+    this.driftY = (Math.random() - 0.5) * 0.001;
+    this.orbitSpeed = (Math.random() - 0.5) * 0.0003;
+    this.orbitAngle = angle;
+    this.orbitR = dist;
   }
   update(t) {
     this.phase += this.speed;
-    const state = aiState;
 
-    if (state === 'listening') {
-      // 电波形态：粒子排列成有规律的波形环
-      const wave = Math.sin(this.angle * 3 + t * 0.004) * 25;
-      this.r = 60 + wave;
-      this.alpha = 0.5 + Math.sin(t * 0.006 + this.i) * 0.3;
-      this.size = 1.5 + Math.sin(t * 0.005 + this.angle) * 0.8;
-      this.angle += 0.008;
-    } else if (state === 'speaking') {
-      // 脉动电波：快速有节奏的扩缩
-      const pulse = Math.sin(t * 0.012 + this.i * 0.3) * 30;
-      const wave = Math.sin(this.angle * 5 + t * 0.008) * 15;
-      this.r = 55 + pulse + wave;
-      this.alpha = 0.4 + Math.abs(Math.sin(t * 0.01 + this.i * 0.2)) * 0.5;
-      this.size = 1 + Math.abs(Math.sin(t * 0.015 + this.i)) * 2;
-      this.angle += 0.005;
-    } else if (state === 'thinking') {
-      // 缓慢旋转收缩
-      this.r = 45 + Math.sin(t * 0.002 + this.i * 0.1) * 15;
-      this.alpha = 0.3 + Math.sin(t * 0.003) * 0.15;
-      this.size = 1.2;
-      this.angle += 0.015;
-    } else if (state === 'waiting') {
-      // 平静呼吸
-      this.r = this.baseR + Math.sin(t * 0.002 + this.phase) * 8;
-      this.alpha = 0.3 + Math.sin(t * 0.002 + this.phase) * 0.1;
-      this.size = 1 + Math.sin(this.phase) * 0.3;
-      this.angle += 0.002;
+    if (aiState === 'listening') {
+      // 电波形态：围绕中心旋转 + 波形脉动
+      this.orbitAngle += 0.003 + this.orbitR * 0.005;
+      const wave = Math.sin(this.orbitAngle * 4 + t * 0.003) * 0.03;
+      this.x = 0.5 + Math.cos(this.orbitAngle) * (this.orbitR * 1.3 + wave);
+      this.y = 0.42 + Math.sin(this.orbitAngle) * (this.orbitR * 0.7 + wave);
+      this.alpha = this.baseAlpha + Math.sin(t * 0.005 + this.phase) * 0.25;
+      this.size = this.baseSize + Math.sin(t * 0.004 + this.orbitAngle) * 0.5;
+    } else if (aiState === 'speaking') {
+      // 有节奏的扩缩脉动 + 快速旋转
+      this.orbitAngle += 0.006;
+      const pulse = Math.sin(t * 0.01) * 0.06;
+      const wave = Math.sin(this.orbitAngle * 6 + t * 0.006) * 0.02;
+      this.x = 0.5 + Math.cos(this.orbitAngle) * (this.orbitR * 1.3 + pulse + wave);
+      this.y = 0.42 + Math.sin(this.orbitAngle) * (this.orbitR * 0.7 + pulse * 0.5);
+      this.alpha = this.baseAlpha + Math.abs(Math.sin(t * 0.008 + this.phase)) * 0.4;
+      this.size = this.baseSize + Math.abs(Math.sin(t * 0.012 + this.phase)) * 1.2;
+    } else if (aiState === 'thinking') {
+      // 缓慢聚拢旋转
+      this.orbitAngle += 0.004;
+      const shrink = 0.7;
+      this.x = 0.5 + Math.cos(this.orbitAngle) * this.orbitR * 1.3 * shrink;
+      this.y = 0.42 + Math.sin(this.orbitAngle) * this.orbitR * 0.7 * shrink;
+      this.alpha = this.baseAlpha * 0.8 + Math.sin(t * 0.003) * 0.1;
+      this.size = this.baseSize * 0.9;
     } else {
-      // idle: 随机飘散
-      this.r = this.baseR + Math.sin(this.phase * 2) * this.drift;
-      this.alpha = 0.15 + Math.sin(this.phase) * 0.1;
-      this.size = 0.8 + Math.sin(this.phase * 3) * 0.5;
-      this.angle += this.speed * 0.5;
+      // idle / waiting: 缓慢飘散呼吸
+      this.x = this.baseX + Math.sin(this.phase) * 0.008 + this.driftX * Math.sin(t * 0.001);
+      this.y = this.baseY + Math.cos(this.phase * 0.7) * 0.005 + this.driftY * Math.cos(t * 0.001);
+      this.orbitAngle += this.orbitSpeed;
+      this.alpha = this.baseAlpha + Math.sin(this.phase) * 0.08;
+      this.size = this.baseSize + Math.sin(this.phase * 2) * 0.3;
     }
   }
   draw() {
-    const x = sCx + Math.cos(this.angle) * this.r;
-    const y = sCy + Math.sin(this.angle) * this.r;
+    const px = this.x * SW;
+    const py = this.y * SH;
     const a = Math.max(0, Math.min(1, this.alpha));
-    const s = Math.max(0.3, this.size);
+    const s = Math.max(0.2, this.size);
+    const { r, g, b } = this.col;
 
-    // 发光效果
-    sCtx.beginPath();
-    sCtx.arc(x, y, s + 1, 0, Math.PI * 2);
-    sCtx.fillStyle = `rgba(255,160,120,${a * 0.15})`;
-    sCtx.fill();
+    // 发光
+    if (s > 1) {
+      sCtx.beginPath();
+      sCtx.arc(px, py, s * 2.5, 0, Math.PI * 2);
+      sCtx.fillStyle = `rgba(${r},${g},${b},${a * 0.06})`;
+      sCtx.fill();
+    }
 
     // 核心
     sCtx.beginPath();
-    sCtx.arc(x, y, s, 0, Math.PI * 2);
-    sCtx.fillStyle = `rgba(255,180,140,${a})`;
+    sCtx.arc(px, py, s, 0, Math.PI * 2);
+    sCtx.fillStyle = `rgba(${r},${g},${b},${a})`;
     sCtx.fill();
-
-    return { x, y, a };
   }
 }
 
-for (let i = 0; i < SOUL_PARTICLES; i++) soulPts.push(new SoulPt(i));
+for (let i = 0; i < GALAXY_COUNT; i++) galaxy.push(new GalaxyPt());
 
 function drawSoul(t) {
-  sCtx.clearRect(0, 0, SC, SC);
+  sCtx.clearRect(0, 0, SW, SH);
 
-  // 中心微光
-  const glowA = aiState === 'speaking' ? 0.08 : aiState === 'listening' ? 0.05 : 0.02;
-  const grad = sCtx.createRadialGradient(sCx, sCy, 0, sCx, sCy, 100);
-  grad.addColorStop(0, `rgba(255,140,100,${glowA})`);
+  // 中心星云光晕
+  const ca = aiState === 'speaking' ? 0.06 : aiState === 'listening' ? 0.04 : 0.015;
+  const grad = sCtx.createRadialGradient(SW * 0.5, SH * 0.42, 0, SW * 0.5, SH * 0.42, SW * 0.35);
+  grad.addColorStop(0, `rgba(120,140,255,${ca})`);
+  grad.addColorStop(0.4, `rgba(180,140,200,${ca * 0.5})`);
   grad.addColorStop(1, 'transparent');
   sCtx.fillStyle = grad;
-  sCtx.fillRect(0, 0, SC, SC);
+  sCtx.fillRect(0, 0, SW, SH);
 
-  // 绘制粒子并收集位置用于连线
-  const positions = [];
-  soulPts.forEach(p => {
-    p.update(t);
-    positions.push(p.draw());
-  });
-
-  // 连线
-  const lineA = aiState === 'speaking' ? 0.12 : aiState === 'listening' ? 0.08 : 0.03;
-  for (let i = 0; i < positions.length; i++) {
-    const next = (i + 1) % positions.length;
-    const dx = positions[i].x - positions[next].x;
-    const dy = positions[i].y - positions[next].y;
-    const d = Math.sqrt(dx * dx + dy * dy);
-    if (d < 60) {
-      sCtx.strokeStyle = `rgba(255,160,120,${lineA * (1 - d / 60)})`;
-      sCtx.lineWidth = 0.4;
-      sCtx.beginPath();
-      sCtx.moveTo(positions[i].x, positions[i].y);
-      sCtx.lineTo(positions[next].x, positions[next].y);
-      sCtx.stroke();
-    }
-  }
-
+  galaxy.forEach(p => { p.update(t); p.draw(); });
   requestAnimationFrame(drawSoul);
 }
 requestAnimationFrame(drawSoul);
