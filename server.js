@@ -244,31 +244,30 @@ function isWhisperHallucination(text) {
   return false;
 }
 
-// "救援"被复读的 Whisper 输出：返回第一段不重复的内容
-// 例如 "いいえ、そんなことないよ。まだ勉強中です。 あなたは? あなたは? あなたは?"
-// → "いいえ、そんなことないよ。まだ勉強中です。"
-// 如果没有检测到重复，返回原文
+// "救援"被复读的 Whisper 输出：保留到第一次完整片段为止
+// 例如 "ちょっと疲れちゃった 疲れちゃった 疲れた"
+// → "ちょっと疲れちゃった"（保留第一次 "疲れちゃった"，扔掉重复的 "疲れちゃった 疲れた"）
 function salvageRepetition(s) {
   if (!s || s.length < 12) return s;
-  // 去掉空格比较（保留标点），让 "あなたは? あなたは?" 能被认作重复
   const noSpace = s.replace(/\s+/g, '');
   if (noSpace.length < 12) return s;
 
   const maxLen = Math.min(30, Math.floor(noSpace.length / 2));
-  // 从长到短找，最先找到的最长的重复就 cut
   for (let len = maxLen; len >= 6; len--) {
     for (let i = 0; i + len * 2 <= noSpace.length; i++) {
       if (noSpace.substring(i, i + len) === noSpace.substring(i + len, i + len * 2)) {
-        // 找到 noSpace 里 i 位置。映射回原文 position（考虑被剥掉的空格）
+        // 保留到第 1 次片段完成为止 —— 即 noSpace 位置 (i + len)
+        // 映射到原文：走 (i + len) 个非空字符
+        const target = i + len;
         let origPos = 0, seen = 0;
-        while (seen < i && origPos < s.length) {
+        while (seen < target && origPos < s.length) {
           if (!/\s/.test(s[origPos])) seen++;
           origPos++;
         }
         const salvaged = s.substring(0, origPos).trim();
         if (salvaged.length >= 4) {
           console.log('💊 salvaged repetition:', JSON.stringify(salvaged),
-                      '(cut off:', JSON.stringify(s.substring(origPos)), ')');
+                      '| dropped:', JSON.stringify(s.substring(origPos)));
           return salvaged;
         }
       }

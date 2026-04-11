@@ -1470,7 +1470,7 @@ function startMediaRecorder() {
     if (mediaRecorder.state !== 'inactive') {
       try { mediaRecorder.stop(); } catch {}
     }
-    mediaRecorder = null; // 明确释放引用，防止下面 try 抛了之后还指向旧的
+    mediaRecorder = null;
   }
   audioChunks = [];
 
@@ -1482,13 +1482,19 @@ function startMediaRecorder() {
   try {
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus' : 'audio/webm';
-    mediaRecorder = new MediaRecorder(micStream, { mimeType });
+    // 关键性能优化：限制 Opus 码率到 32kbps（语音清晰，体积 1/4-1/6）
+    // 默认码率可能高达 128-256kbps，对语音是浪费
+    // 32kbps × 10s = 40KB (vs 320KB with 256kbps default)
+    mediaRecorder = new MediaRecorder(micStream, {
+      mimeType,
+      audioBitsPerSecond: 32000  // 32 kbps, speech-optimized
+    });
     mediaRecorder.ondataavailable = e => {
       if (e.data.size > 0) audioChunks.push(e.data);
     };
     mediaRecorder.onerror = e => console.error('❌ mediaRecorder error:', e);
     mediaRecorder.start(500);
-    console.log('🎧 new recorder ready: state =', mediaRecorder.state, 'mime =', mimeType);
+    console.log('🎧 new recorder ready: state =', mediaRecorder.state, 'mime =', mimeType, '@ 32kbps');
     return true;
   } catch (err) {
     console.error('❌ mediaRecorder creation failed:', err);
