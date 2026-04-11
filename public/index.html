@@ -59,10 +59,27 @@
     /* ===== Soul label ===== */
     .soul-label{
       position:relative;z-index:3;
-      margin-top:0;margin-bottom:8px;font-size:10px;font-weight:200;
+      margin-top:0;margin-bottom:8px;font-size:11px;font-weight:300;
       letter-spacing:8px;text-transform:uppercase;
-      color:rgba(200,210,230,0.35);transition:all 0.6s;
+      color:rgba(200,210,230,0.5);
       flex-shrink:0;text-align:center;
+      transition:color 0.6s, letter-spacing 0.6s;
+      animation:label-breathe 3.8s ease-in-out infinite;
+    }
+    @keyframes label-breathe{
+      0%,100%{opacity:0.35;transform:scale(0.98);}
+      50%{opacity:0.85;transform:scale(1.02);}
+    }
+    /* listening 态：更强的呼吸 + 字稍大 */
+    .soul-label.listening{
+      color:rgba(180,200,255,0.75);
+      letter-spacing:10px;
+      animation:label-breathe-listen 2.6s ease-in-out infinite;
+      text-shadow:0 0 12px rgba(150,180,255,0.35);
+    }
+    @keyframes label-breathe-listen{
+      0%,100%{opacity:0.45;transform:scale(0.98);text-shadow:0 0 6px rgba(150,180,255,0.2);}
+      50%{opacity:1;transform:scale(1.04);text-shadow:0 0 20px rgba(150,180,255,0.55);}
     }
 
     /* ===== Dialogue area ===== */
@@ -727,9 +744,10 @@ function setState(s) {
   aiState = s;
   soul.className = 'soul' + (s !== 'idle' ? ' ' + s : '');
   const gc = document.querySelector('.glow-center');
+  label.classList.remove('listening');
   switch (s) {
     case 'idle': label.textContent = 'tap to speak'; gc.classList.remove('on'); break;
-    case 'listening': label.textContent = 'listening'; gc.classList.add('on'); break;
+    case 'listening': label.textContent = 'listening'; gc.classList.add('on'); label.classList.add('listening'); break;
     case 'thinking': label.textContent = ''; gc.classList.add('on'); break;
     case 'speaking': label.textContent = ''; gc.classList.add('on'); break;
     case 'waiting': label.textContent = 'your turn'; gc.classList.add('on'); break;
@@ -824,6 +842,11 @@ async function ensureMic() {
 // ============================================================
 // SPEECH RECOGNITION
 // ============================================================
+let recogFatal = false;           // 致命错误后不再自动重启
+let recogRestartCount = 0;        // 本次录音中的重启计数，超过阈值就停
+const RECOG_MAX_RESTARTS = 6;
+const RECOG_FATAL_ERRORS = new Set(['audio-capture', 'not-allowed', 'service-not-allowed']);
+
 function startRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return false;
@@ -834,6 +857,8 @@ function startRecognition() {
   recognition.interimResults = true;
   recognition.continuous = true;
   finalTranscript = ''; lastTranscript = '';
+  recogFatal = false;
+  recogRestartCount = 0;
 
   recognition.onresult = (e) => {
     let interim = '';
@@ -848,9 +873,20 @@ function startRecognition() {
   };
   recognition.onerror = (e) => {
     console.log('recog error:', e.error);
+    if (RECOG_FATAL_ERRORS.has(e.error)) {
+      recogFatal = true;
+      console.warn('⚠️  Web Speech fatal error — 浏览器识别放弃，改用 Whisper。原因:', e.error);
+      if (e.error === 'audio-capture') {
+        toast('浏览器识别无法访问麦克风，将只用 Whisper');
+      }
+    }
   };
   recognition.onend = () => {
-    if (isRecording) { try { recognition.start(); } catch {} }
+    // 只有仍在录音、不是 fatal、且没超过重启上限时才重启
+    if (isRecording && !recogFatal && recogRestartCount < RECOG_MAX_RESTARTS) {
+      recogRestartCount++;
+      try { recognition.start(); } catch (err) { recogFatal = true; }
+    }
   };
   try { recognition.start(); return true; } catch(err) { console.log('recog start fail:', err); return false; }
 }
@@ -1024,32 +1060,41 @@ async function stopRec(silent) {
   if (audioBlob && audioBlob.size > 500 && hadSpeech) {
     try {
       const base64 = await blobToBase64(audioBlob);
+      console.log('📤 sending to Whisper: audio base64 len=', base64?.length);
       if (base64) {
         const res = await fetch('/api/transcribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ audio: base64, hasBrowserText: !!browserText })
         });
+        console.log('📥 /api/transcribe status=', res.status);
+        const data = await res.json().catch(() => ({}));
+        console.log('📥 /api/transcribe body=', data);
         if (res.ok) {
-          const data = await res.json();
           const wt = (data.text || '').trim();
           console.log('✅ Whisper result:', wt, 'hallucination:', data.hallucination);
-          // 服务端已经标记为幻觉 → 回退到浏览器结果
           if (data.hallucination) {
             console.log('⚠️ server-marked hallucination, using browser result');
-            // wt 已被服务端清空，finalText 保持 browserText
-          } else if (wt && browserText && wt.length > browserText.length * 3) {
-            console.log('⚠️ Whisper result 3x longer than browser — likely hallucination');
           } else if (wt) {
-            finalText = wt;
+            // 只在浏览器也识别到内容时才做对比；否则直接相信 Whisper（它比浏览器精确）
+            if (browserText && !textsLookRelated(wt, browserText)) {
+              console.log('⚠️ Whisper vs browser: no overlap → hallucination; using browser');
+            } else {
+              finalText = wt;
+            }
           }
         } else {
-          console.log('❌ Whisper failed:', res.status);
+          console.error('❌ Whisper endpoint failed:', res.status, data);
         }
       }
     } catch (err) {
-      console.log('whisper err:', err);
+      console.error('❌ whisper network err:', err);
     }
+  } else {
+    console.log('⏭  skipping Whisper:',
+                'hasBlob=', !!audioBlob,
+                'blobSize=', audioBlob?.size,
+                'hadSpeech=', hadSpeech);
   }
 
   live.textContent = '';
@@ -1067,6 +1112,30 @@ function blobToBase64(blob) {
     rd.onerror = () => resolve(null);
     rd.readAsDataURL(blob);
   });
+}
+
+// 归一化：去标点空格，转小写
+function normalizeText(s) {
+  return (s || '').toLowerCase()
+    .replace(/[。、！？\.\,!\?\s「」『』（）\(\)\[\]【】…・]/g, '');
+}
+
+// 判断两段文本是否相关（用较短那段的字符在较长那段里的覆盖率）
+// 用来过滤"Whisper 返回结果和浏览器识别完全不一样"的情况
+function textsLookRelated(a, b) {
+  const na = normalizeText(a);
+  const nb = normalizeText(b);
+  if (!na || !nb) return true; // 任一为空 → 不做对比
+  const [shorter, longer] = na.length <= nb.length ? [na, nb] : [nb, na];
+  // 包含 → 肯定相关
+  if (longer.includes(shorter)) return true;
+  // 字符重叠率：较短文本里的字符有多少出现在较长文本里
+  let hits = 0;
+  for (const ch of shorter) {
+    if (longer.includes(ch)) hits++;
+  }
+  const overlap = hits / shorter.length;
+  return overlap >= 0.55; // 55% 以上认为相关
 }
 
 function tap() {

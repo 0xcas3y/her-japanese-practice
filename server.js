@@ -218,7 +218,8 @@ app.post('/api/transcribe', async (req, res) => {
     const audioBuffer = Buffer.from(audio, 'base64');
 
     const boundary = '----FormBoundary' + Date.now().toString(36);
-    const promptText = 'えっと、今日は何をしていたの？あのね、最近なんか忙しくて...。でも、楽しいこともあったよ。';
+    // NOTE: 不传 initial_prompt —— Whisper 在音频短或不确定时会把 prompt
+    // 原样回声进结果，造成严重的伪幻觉。只依赖 language=ja 就够了。
     const body = Buffer.concat([
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`
@@ -227,7 +228,6 @@ app.post('/api/transcribe', async (req, res) => {
       Buffer.from(
         `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nja\r\n` +
-        `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${promptText}\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json\r\n` +
         `--${boundary}--\r\n`
