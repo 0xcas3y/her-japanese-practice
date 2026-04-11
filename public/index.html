@@ -1648,7 +1648,21 @@ async function stopRec(silent, manual = false) {
   if (finalText) {
     process(finalText);
   } else {
-    setState('idle');
+    // Whisper 被判幻觉 + 浏览器也空 → 别掉回 idle 让用户手动重点
+    // 自动重新开始监听，让用户再说一次就行
+    console.warn('⚠️  no usable transcript — auto-restarting listening');
+    toast('没听清，再说一次');
+    if (micReady && !sessionEnded) {
+      isRecording = true;
+      setState('listening');
+      live.classList.add('on');
+      finalTranscript = ''; lastTranscript = '';
+      startRecognition();
+      startMediaRecorder();
+      startVAD();
+    } else {
+      setState('idle');
+    }
   }
 }
 
