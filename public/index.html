@@ -284,12 +284,24 @@
     .wave span:nth-child(3){animation-delay:.3s}
     @keyframes w{0%,60%,100%{transform:translateY(0);opacity:.25}30%{transform:translateY(-8px);opacity:.6}}
 
-    /* ===== Live transcript ===== */
+    /* ===== Listening indicator (浮在底部的柔和呼吸圆点) ===== */
+    /* 不再显示浏览器的不准确实时识别，只显示 "正在听" 的动效 */
     .live{
-      position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:5;
-      font-size:15px;color:rgba(255,176,136,0.6);font-weight:300;
-      max-width:85%;text-align:center;overflow:hidden;text-overflow:ellipsis;
-      white-space:nowrap;
+      position:fixed;bottom:96px;left:50%;transform:translateX(-50%);z-index:5;
+      display:none;align-items:center;gap:6px;
+      pointer-events:none;opacity:0.65;
+    }
+    .live.on{display:flex;}
+    .live span{
+      display:block;width:5px;height:5px;border-radius:50%;
+      background:rgba(200,210,255,0.7);
+      animation:live-pulse 1.4s ease-in-out infinite;
+    }
+    .live span:nth-child(2){animation-delay:0.18s;}
+    .live span:nth-child(3){animation-delay:0.36s;}
+    @keyframes live-pulse{
+      0%,100%{transform:scale(0.85);opacity:0.3;}
+      50%{transform:scale(1.25);opacity:0.95;box-shadow:0 0 12px rgba(180,200,255,0.6);}
     }
 
     /* ===== Bottom controls ===== */
@@ -568,7 +580,7 @@
   <div class="dialogue" id="dialogue"></div>
 </div>
 
-<div class="live" id="live"></div>
+<div class="live" id="live"><span></span><span></span><span></span></div>
 
 
 <script>
@@ -1265,15 +1277,14 @@ function startRecognition() {
   recogRestartCount = 0;
 
   recognition.onresult = (e) => {
-    let interim = '';
+    // 我们仍然累积 finalTranscript（作为 Whisper 失败时的 fallback），
+    // 但不再把浏览器的不准确结果显示到屏幕最下面 —— 那会让用户看到很扯的识别
+    // 真正的识别结果在用户说完后由 Whisper 返回并作为气泡显示
     for (let i = e.resultIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) {
         finalTranscript += e.results[i][0].transcript;
-      } else {
-        interim += e.results[i][0].transcript;
       }
     }
-    live.textContent = finalTranscript + interim;
   };
   recognition.onerror = (e) => {
     console.log('recog error:', e.error);
@@ -1350,9 +1361,8 @@ function startVAD() {
     } else {
       // 安静
       silentSince += 100; // 每100ms检测一次
-      // 必须有内容才自动发送（避免刚开始就发空的）
-      const hasContent = (finalTranscript || '').trim() || (live.textContent || '').trim();
-      if (hasContent && silentSince >= SILENCE_DURATION) {
+      // 必须有内容才自动发送 —— 用 hadRealSpeech 判断（不再依赖 live.textContent 因为它现在只是动效）
+      if (hadRealSpeech() && silentSince >= SILENCE_DURATION) {
         stopRec(false);
       }
     }
@@ -1434,7 +1444,7 @@ async function startRec() {
   isRecording = true;
   isBusy = false;
   setState('listening');
-  live.textContent = '';
+  live.classList.add('on'); // 开呼吸点动效
 
   startVAD();
 }
@@ -1449,10 +1459,10 @@ async function stopRec(silent) {
   try { recognition?.abort(); } catch {}
   recognition = null;
 
-  const browserText = (finalTranscript || '').trim() || live.textContent.trim();
+  const browserText = (finalTranscript || '').trim();
 
   if (silent) {
-    live.textContent = '';
+    live.classList.remove('on');
     try { mediaRecorder?.stop(); } catch {}
     setState('idle');
     return;
@@ -1486,20 +1496,20 @@ async function stopRec(silent) {
   // 没有任何真实说话内容 → 直接丢弃，绝对不发 Whisper（避免幻觉）
   if (!hadSpeech && !browserText) {
     console.log('🔇 no real speech detected — skipping Whisper');
-    live.textContent = '';
+    live.classList.remove('on');
     setState('idle');
     return;
   }
 
   // 没有任何 blob 也没浏览器文本
   if (!browserText && (!audioBlob || audioBlob.size < 500)) {
-    live.textContent = '';
+    live.classList.remove('on');
     setState('idle');
     return;
   }
 
   // 发 Whisper 精确识别
-  live.textContent = '...';
+  live.classList.remove('on'); // 用户说完了，收起呼吸点
   let finalText = browserText; // fallback
 
   if (audioBlob && audioBlob.size > 500 && hadSpeech) {
@@ -1543,7 +1553,7 @@ async function stopRec(silent) {
                 'hadSpeech=', hadSpeech);
   }
 
-  live.textContent = '';
+  live.classList.remove('on');
   if (finalText) {
     process(finalText);
   } else {
@@ -1669,10 +1679,8 @@ async function process(text) {
 
   // Haru 说完之后自动开始听（除非会话已结束）
   if (micReady && !sessionEnded) {
-    // TTS 结束到真正静默之间有约 500-800ms 的扬声器尾音
-    // 立即开始录音会把 Haru 自己的声音录进去，被 Whisper 当成用户说的
-    // 等 800ms 再开始，避免音频污染
-    await new Promise(r => setTimeout(r, 800));
+    // 250ms 微缓冲 —— 让 TTS 的最末段衰减，echo cancellation 兜底剩下的
+    await new Promise(r => setTimeout(r, 250));
 
     // 先确保麦克风流还活着 —— TTS 播放期间 iOS 有时会释放它
     const micOk = await ensureMic();
@@ -1684,7 +1692,7 @@ async function process(text) {
     console.log('⏱  auto-listen starting for next turn');
     isRecording = true;
     setState('listening');
-    live.textContent = '';
+    live.classList.add('on');
     finalTranscript = ''; lastTranscript = '';
     startRecognition();
     const recOk = startMediaRecorder();

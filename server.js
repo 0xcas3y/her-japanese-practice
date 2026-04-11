@@ -240,17 +240,18 @@ function isWhisperHallucination(text) {
 }
 
 // 检测重复型幻觉。Whisper 幻觉的典型特征是"相邻位置连续重复同一个片段"
-// 自然语言里偶尔也有重复，但通常是间隔的（中间会插别的词）
-// 策略：
-//   1) 相邻重复：5+ 字符片段紧接着自己出现 → 几乎肯定是幻觉
-//   2) 多次出现：5-15 字符片段出现 3+ 次 → 几乎肯定是幻觉
+// 但自然口语里 5-7 字的重复很常见（停顿、强调、修正）
+// 策略提高到 8 字 —— 只抓明显的机器幻觉，不误伤自然重复
+//   1) 相邻重复：8+ 字符片段紧接着自己出现 → 判为幻觉
+//   2) 多次出现：8+ 字符片段出现 3+ 次 → 判为幻觉
 function hasExcessiveRepetition(s) {
-  if (!s || s.length < 10) return false;
+  if (!s || s.length < 16) return false;
 
-  // 1) 相邻重复检测（最常见的幻觉模式）
-  //    "忙しかった忙しかった" / "今日はとっても忙しかった今日はとっても忙しかった"
+  // 1) 相邻重复检测：8 字以上才算
+  //    "忙しかった忙しかった" (10 字) —— 不再误判（可能是自然停顿）
+  //    "今日はとっても忙しかった今日はとっても忙しかった" (24 字) —— 抓
   const maxLenAdj = Math.min(20, Math.floor(s.length / 2));
-  for (let len = 5; len <= maxLenAdj; len++) {
+  for (let len = 8; len <= maxLenAdj; len++) {
     for (let i = 0; i + len * 2 <= s.length; i++) {
       if (s.substring(i, i + len) === s.substring(i + len, i + len * 2)) {
         console.log('🔁 adjacent repetition detected:',
@@ -260,10 +261,9 @@ function hasExcessiveRepetition(s) {
     }
   }
 
-  // 2) 非相邻但多次出现（3 次以上）
-  //    "聞こえますか? ノー... 聞こえますか? あー、聞こえますか?"
+  // 2) 非相邻但多次出现（3+ 次，8 字以上）
   const maxLenFar = Math.min(15, Math.floor(s.length / 3));
-  for (let len = 5; len <= maxLenFar; len++) {
+  for (let len = 8; len <= maxLenFar; len++) {
     for (let i = 0; i + len * 3 <= s.length; i++) {
       const chunk = s.substring(i, i + len);
       let found = 1;
