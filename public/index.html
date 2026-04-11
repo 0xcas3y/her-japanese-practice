@@ -571,13 +571,18 @@ function render() {
     if (msg.role === 'user') {
       el.classList.add('d-you');
       const hasFix = msg.corrected && msg.corrected !== msg.text;
+      const hasNative = msg.native_casual && msg.native_casual.length > 0;
       const hasExp = !!msg.explanation;
+      const hasPractice = !!msg.practice;
+      const hasCorrection = hasFix || hasNative || hasExp || hasPractice;
       el.innerHTML = `<div class="d-text">${esc(msg.text)}</div>` +
-        (hasFix || hasExp ? `
+        (hasCorrection ? `
           <div class="d-actions"><button class="d-act" data-a="detail" data-i="${idx}">correction</button></div>
           <div class="d-detail" id="dt-${idx}">
-            ${hasFix ? `<div class="d-correction">${esc(msg.corrected)}</div>` : ''}
+            ${hasFix ? `<div class="d-correction">→ ${esc(msg.corrected)}</div>` : ''}
+            ${hasNative ? `<div style="margin-top:6px;color:rgba(150,220,255,0.7);font-size:13px;font-weight:300">${msg.native_casual.map(n => '💬 ' + esc(n)).join('<br>')}</div>` : ''}
             ${hasExp ? `<div class="d-explanation">${esc(msg.explanation)}</div>` : ''}
+            ${hasPractice ? `<div style="margin-top:6px;color:rgba(255,200,150,0.6);font-size:12px;font-weight:300">✏️ ${esc(msg.practice)}</div>` : ''}
           </div>` : '');
     } else {
       el.classList.add('d-haru');
@@ -899,7 +904,9 @@ async function process(text) {
 
     if (data.corrected) userMsg.corrected = data.corrected;
     if (data.explanation) userMsg.explanation = data.explanation;
-    messages.push({ role: 'assistant', corrected: data.corrected || '', explanation: data.explanation || '', response: data.response || '' });
+    if (data.native_casual) userMsg.native_casual = data.native_casual;
+    if (data.practice) userMsg.practice = data.practice;
+    messages.push({ role: 'assistant', response: data.response || '' });
 
     removeTyping(); render();
 
@@ -1234,7 +1241,9 @@ function openHistory() {
                 <div class="h-role">you</div>
                 <div class="h-text">${esc(m.text)}</div>
                 ${m.corrected && m.corrected !== m.text ? `<div style="color:rgba(255,180,150,0.8);font-size:14px;font-weight:300;margin-top:3px">→ ${esc(m.corrected)}</div>` : ''}
+                ${m.native_casual && m.native_casual.length ? `<div style="color:rgba(150,220,255,0.7);font-size:13px;font-weight:300;margin-top:3px">${m.native_casual.map(n => '💬 ' + esc(n)).join('<br>')}</div>` : ''}
                 ${m.explanation ? `<div style="color:rgba(255,200,170,0.6);font-size:13px;font-weight:300;margin-top:2px">${esc(m.explanation)}</div>` : ''}
+                ${m.practice ? `<div style="color:rgba(255,200,150,0.5);font-size:12px;font-weight:300;margin-top:2px">✏️ ${esc(m.practice)}</div>` : ''}
               </div>`;
             } else {
               return `<div class="h-msg">
