@@ -891,7 +891,16 @@ class ShootingStar {
   get dead() { return this.life <= 0 || this.x < -200 || this.x > canvas.width + 200 || this.y > canvas.height + 200; }
 }
 
+// 手机 listening 时降到 ~15fps —— 把主线程让给 VAD
+let _lastDrawPts = 0;
 function drawPts(t) {
+  if (IS_MOBILE && aiState === 'listening') {
+    if (t - _lastDrawPts < 66) {  // 66ms ≈ 15fps
+      requestAnimationFrame(drawPts);
+      return;
+    }
+    _lastDrawPts = t;
+  }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < N; i++) {
     pts[i].update(t); pts[i].draw();
@@ -1083,7 +1092,16 @@ class GalaxyPt {
 
 for (let i = 0; i < GALAXY_COUNT; i++) galaxy.push(new GalaxyPt());
 
+// 手机 listening 时也降到 ~15fps
+let _lastDrawSoul = 0;
 function drawSoul(t) {
+  if (IS_MOBILE && aiState === 'listening') {
+    if (t - _lastDrawSoul < 66) {
+      requestAnimationFrame(drawSoul);
+      return;
+    }
+    _lastDrawSoul = t;
+  }
   sCtx.clearRect(0, 0, SW, SH);
 
   // 中心星云光晕 — 水墨多层晕染 + 呼吸脉动
@@ -1368,10 +1386,12 @@ let vadInterval = null;
 let silentSince = 0;
 let audioCtx = null, analyser = null, vadSource = null;
 let maxRMS = 0, speechFrames = 0; // track whether any real speech happened
-const SILENCE_THRESHOLD = 0.012; // 低于这个音量算安静
-const SPEECH_RMS_MIN = 0.018;    // 要有这个音量才算"真的说过话"
-const SPEECH_FRAMES_MIN = 3;     // 至少有3帧 ≥ 300ms 的有声内容
-const SILENCE_DURATION = 2500;   // 静默 2.5 秒后自动发送（自然停顿触发）
+// 阈值放宽：原来 0.012/0.018 在嘈杂环境下会让"一直有噪音"的 VAD 永远不认为你沉默
+const SILENCE_THRESHOLD = 0.018; // 低于这个音量算安静（原来 0.012）
+const SPEECH_RMS_MIN = 0.024;    // 要有这个音量才算"真的说过话"（原来 0.018）
+// 这两个值有 gap（0.018-0.024）—— 轻微噪音不算"说话"但也不影响静默触发
+const SPEECH_FRAMES_MIN = 3;     // 至少 3 帧 ≥ 300ms
+const SILENCE_DURATION = 2500;   // 静默 2.5 秒后自动发送
 
 function startVAD() {
   if (!micStream) return;
@@ -1505,12 +1525,13 @@ async function startRec() {
   startVAD();
 }
 
-async function stopRec(silent) {
+async function stopRec(silent, manual = false) {
   if (!isRecording) return;
   isRecording = false;
   const hadSpeech = hadRealSpeech();
   const peakRMS = maxRMS;
   stopVAD();
+  console.log('🛑 stopRec called: silent=', silent, 'manual=', manual, 'hadSpeech=', hadSpeech);
 
   try { recognition?.abort(); } catch {}
   recognition = null;
@@ -1549,15 +1570,16 @@ async function stopRec(silent) {
   console.log('🎤 stopRec: hadSpeech=', hadSpeech, 'peakRMS=', peakRMS.toFixed(4),
               'browser=', JSON.stringify(browserText), 'blob=', audioBlob?.size);
 
-  // 没有任何真实说话内容 → 直接丢弃，绝对不发 Whisper（避免幻觉）
-  if (!hadSpeech && !browserText) {
+  // 没有任何真实说话内容 + 也不是用户手动点击 → 跳过 Whisper
+  // 如果用户主动点了停止（manual=true），说明他们确实说了话，VAD 的判断可能偏保守 —— 无条件走 Whisper
+  if (!manual && !hadSpeech && !browserText) {
     console.log('🔇 no real speech detected — skipping Whisper');
     live.classList.remove('on');
     setState('idle');
     return;
   }
 
-  // 没有任何 blob 也没浏览器文本
+  // 没有任何 blob 也没浏览器文本（连手动触发都救不了）
   if (!browserText && (!audioBlob || audioBlob.size < 500)) {
     live.classList.remove('on');
     setState('idle');
@@ -1568,7 +1590,10 @@ async function stopRec(silent) {
   live.classList.remove('on'); // 用户说完了，收起呼吸点
   let finalText = browserText; // fallback
 
-  if (audioBlob && audioBlob.size > 500 && hadSpeech) {
+  // 手动触发时：只要有 audio blob 就发 Whisper，不看 hadSpeech
+  // VAD 触发时：保留原有安全检查
+  const shouldCallWhisper = audioBlob && audioBlob.size > 500 && (manual || hadSpeech);
+  if (shouldCallWhisper) {
     try {
       const base64 = await blobToBase64(audioBlob);
       console.log('📤 sending to Whisper: audio base64 len=', base64?.length);
@@ -1652,7 +1677,7 @@ function textsLookRelated(a, b) {
 
 function tap() {
   if (isRecording) {
-    stopRec(false);
+    stopRec(false, true); // 第二个参数 true = 用户手动触发
   } else {
     if (aiState === 'speaking') { ap.pause(); ap.currentTime = 0; }
     startRec();
