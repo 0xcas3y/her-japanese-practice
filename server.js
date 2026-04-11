@@ -169,8 +169,7 @@ app.post('/api/transcribe', async (req, res) => {
     const audioBuffer = Buffer.from(audio, 'base64');
 
     const boundary = '----FormBoundary' + Date.now().toString(36);
-    // prompt 里加标点示例，Whisper 会模仿这个格式输出
-    const promptText = 'えっと、今日は何をしていたの？あのね、最近なんか忙しくて...。でも、楽しいこともあったよ。日本語の会話です。句読点を正確に入れてください。';
+    const promptText = 'えっと、今日は何をしていたの？あのね、最近なんか忙しくて...。でも、楽しいこともあったよ。';
     const body = Buffer.concat([
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`
@@ -180,6 +179,7 @@ app.post('/api/transcribe', async (req, res) => {
         `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nja\r\n` +
         `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${promptText}\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0\r\n` +
         `--${boundary}--\r\n`
       )
     ]);

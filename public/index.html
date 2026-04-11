@@ -833,7 +833,12 @@ async function stopRec(silent) {
           const data = await res.json();
           const wt = (data.text || '').trim();
           console.log('✅ Whisper result:', wt);
-          if (wt) finalText = wt;
+          // 检测 Whisper 幻听：如果结果比浏览器识别长3倍以上，可能是幻听
+          if (wt && browserText && wt.length > browserText.length * 3) {
+            console.log('⚠️ Whisper hallucination detected, using browser result');
+          } else if (wt) {
+            finalText = wt;
+          }
         } else {
           console.log('❌ Whisper failed:', res.status);
         }
