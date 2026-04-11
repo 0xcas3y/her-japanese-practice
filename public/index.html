@@ -2566,8 +2566,10 @@ document.addEventListener('keydown', e => {
 // ============================================================
 // INIT
 // ============================================================
+// 主视图只显示当前一轮，启动时永远是 idle（tap to speak）
+// 历史对话保存在 localStorage，通过 history 按钮访问
 render();
-if (messages.length) { setState('waiting'); startTimer(); }
+setState('idle');
 </script>
 </body>
 </html>
