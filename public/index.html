@@ -810,12 +810,14 @@ class DissolveParticle {
     if (this.life <= 0) return;
     const a = Math.max(0, this.life);
     const s = this.size * (0.5 + a * 0.8);
-    // halo
-    ctx.fillStyle = `rgba(${this.col},${a * 0.2})`;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, s * 2.6, 0, Math.PI * 2);
-    ctx.fill();
-    // core
+    // 手机：只画 core（省一半的 arc + fill 调用 → 消散瞬间主线程更空，VAD 不受影响）
+    // 桌面：保留 halo + core
+    if (!IS_MOBILE) {
+      ctx.fillStyle = `rgba(${this.col},${a * 0.2})`;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, s * 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.fillStyle = `rgba(${this.col},${a * 0.95})`;
     ctx.beginPath();
     ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
@@ -829,9 +831,9 @@ class DissolveParticle {
 function spawnDissolveParticles(el, style) {
   const rect = el.getBoundingClientRect();
   const area = rect.width * rect.height;
-  // 手机粒子压低一些（~30-60 颗），桌面保留原量（50-180 颗）
-  const maxCount = IS_MOBILE ? 60 : 180;
-  const minCount = IS_MOBILE ? 30 : 50;
+  // 手机更节省：~15-30 颗（之前 30-60），桌面保留原量（50-180 颗）
+  const maxCount = IS_MOBILE ? 30 : 180;
+  const minCount = IS_MOBILE ? 15 : 50;
   const divisor = IS_MOBILE ? 600 : 280;
   const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
   for (let i = 0; i < count; i++) {
