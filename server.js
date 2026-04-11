@@ -198,13 +198,34 @@ function isWhisperHallucination(text) {
   if (!text) return false;
   const norm = normalizeForHallucinationCheck(text);
   if (!norm) return true;
-  // 完全匹配 / 包含关系
+  // 1) 黑名单命中
   for (const h of WHISPER_JA_HALLUCINATIONS) {
     const nh = normalizeForHallucinationCheck(h);
     if (!nh) continue;
     if (norm === nh) return true;
-    // 短文本（< 30 字符）如果整段被幻觉套话占据，也算幻觉
     if (norm.length < 30 && norm.includes(nh) && nh.length >= 6) return true;
+  }
+  // 2) 重复型幻觉：检查文本里是否有 5 字以上子串重复 2+ 次
+  //   Whisper 在不清楚的音频上会反复输出同一短语
+  //   例："聞こえますか? 聞こえますか? ノー..."
+  if (hasExcessiveRepetition(norm)) return true;
+  return false;
+}
+
+// 检测重复型幻觉：长度 ≥ 6 的片段在文本里出现 2+ 次
+// 例："聞こえますか聞こえますかノー" —— "聞こえますか" 重复 = 幻觉
+function hasExcessiveRepetition(s) {
+  if (!s || s.length < 14) return false; // 短文本不检查
+  const minLen = 6;
+  const maxLen = Math.min(20, Math.floor(s.length / 2));
+  for (let len = minLen; len <= maxLen; len++) {
+    for (let i = 0; i + len * 2 <= s.length; i++) {
+      const chunk = s.substring(i, i + len);
+      const rest = s.substring(i + len);
+      if (rest.includes(chunk)) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -216,31 +237,25 @@ app.post('/api/transcribe', async (req, res) => {
 
   try {
     const audioBuffer = Buffer.from(audio, 'base64');
+    console.log('🎤 incoming audio:', audioBuffer.length, 'bytes');
 
-    const boundary = '----FormBoundary' + Date.now().toString(36);
-    // NOTE: 不传 initial_prompt —— Whisper 在音频短或不确定时会把 prompt
-    // 原样回声进结果，造成严重的伪幻觉。只依赖 language=ja 就够了。
-    const body = Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`
-      ),
-      audioBuffer,
-      Buffer.from(
-        `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n` +
-        `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nja\r\n` +
-        `--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0\r\n` +
-        `--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json\r\n` +
-        `--${boundary}--\r\n`
-      )
-    ]);
+    // 使用 Node 原生 FormData + Blob —— 手写 multipart 会偶发编码问题
+    // (之前的 "Invalid file format" 来自手写 Buffer 拼接的边界/换行符边缘情况)
+    // NOTE: 不传 initial_prompt —— Whisper 会把 prompt 原样回声到结果里造成伪幻觉
+    const form = new FormData();
+    form.append('file', new Blob([audioBuffer], { type: 'audio/webm' }), 'audio.webm');
+    form.append('model', 'whisper-1');
+    form.append('language', 'ja');
+    form.append('temperature', '0');
+    form.append('response_format', 'verbose_json');
 
     const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': `multipart/form-data; boundary=${boundary}`
+        // 让 fetch 自动设置 Content-Type + boundary
       },
-      body
+      body: form
     });
 
     if (!whisperRes.ok) {

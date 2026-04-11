@@ -1129,18 +1129,26 @@ async function stopRec(silent) {
     return;
   }
 
-  // 先请求最后一块数据，再停止
+  // 取音频 blob — 即使 mediaRecorder 已经不在 recording 状态，
+  // 只要 audioChunks 里有数据就直接用，避免丢音频
   let audioBlob = null;
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    try { mediaRecorder.requestData(); } catch {} // flush 最后一块
+  const recState = mediaRecorder?.state;
+  console.log('🎤 mediaRecorder state at stop:', recState, 'chunks:', audioChunks.length);
+
+  if (mediaRecorder && recState === 'recording') {
+    try { mediaRecorder.requestData(); } catch {}
     audioBlob = await new Promise(resolve => {
       const onStop = () => {
         resolve(new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' }));
       };
       mediaRecorder.addEventListener('stop', onStop, { once: true });
-      mediaRecorder.stop();
+      try { mediaRecorder.stop(); } catch {}
       setTimeout(() => resolve(new Blob(audioChunks, { type: 'audio/webm' })), 1500);
     });
+  } else if (audioChunks.length > 0) {
+    // Recorder 已经自己停了（或从未进入 recording）— 直接用已有 chunks
+    console.log('🎤 recorder not recording but chunks available — using chunks directly');
+    audioBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
   }
 
   console.log('🎤 stopRec: hadSpeech=', hadSpeech, 'peakRMS=', peakRMS.toFixed(4),
