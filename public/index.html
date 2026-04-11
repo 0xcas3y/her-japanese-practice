@@ -244,16 +244,46 @@
     .d-haru .d-text::-webkit-scrollbar{display:none;}
     .d-haru .d-text{scrollbar-width:none;}
 
-    /* ===== 手机适配：字号缩小 + 间距收紧 + 气泡高度限制 ===== */
+    /* ===== 手机适配：字号缩小 + 性能降级 ===== */
     @media (max-width:600px){
       .d-you .d-text{
         font-size:15px;padding:11px 16px;line-height:1.55;
+        /* 手机：降低 backdrop-filter 强度，省 GPU */
+        backdrop-filter:blur(10px);
+        -webkit-backdrop-filter:blur(10px);
       }
       .d-haru .d-text{
         font-size:18px;padding:16px 20px;line-height:1.65;
         max-height:36vh;
+        backdrop-filter:blur(12px);
+        -webkit-backdrop-filter:blur(12px);
       }
       .dialogue{max-width:100%;padding:20px 4px 8px;}
+
+      /* 手机消散动画：去掉 filter:blur + brightness（GPU 杀手），
+         只保留 transform + opacity。轻量很多，不卡顿 */
+      @keyframes haru-dissolve{
+        0%   {transform:translateY(0) scale(1);opacity:1;}
+        30%  {transform:translateY(-12vh) scale(0.95);opacity:0.85;}
+        65%  {transform:translateY(-35vh) scale(0.82);opacity:0.3;}
+        100% {transform:translateY(-62vh) scale(0.7);opacity:0;}
+      }
+      @keyframes user-fade{
+        0%   {transform:translateY(0) scale(1);opacity:1;}
+        100% {transform:translateY(-14vh) scale(0.9);opacity:0;}
+      }
+
+      /* 手机 fly-stage：简化 mask 梯度（减少合成层计算） */
+      .fly-stage{
+        mask-image:linear-gradient(to bottom,transparent 0,transparent 14vh,black 24vh,black 100%);
+        -webkit-mask-image:linear-gradient(to bottom,transparent 0,transparent 14vh,black 24vh,black 100%);
+      }
+
+      /* 手机 ink-mist：关闭漂移动画，静止显示 */
+      .ink-mist{animation:none;}
+
+      /* 手机 ambient glows：不要额外的漂移动画 */
+      .glow-1,.glow-2{animation:none;}
     }
 
     /* Action buttons - nearly invisible */
@@ -607,10 +637,15 @@ let audioUnlocked = false;
 // ============================================================
 // PARTICLE SYSTEM
 // ============================================================
+// 手机检测：小屏幕 OR 设备像素比高 OR ua 明确标注
+const IS_MOBILE = Math.min(innerWidth, innerHeight) < 700
+                  || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+console.log('📱 IS_MOBILE =', IS_MOBILE);
+
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const pts = [];
-const N = 200;  // 加密：从 100 → 200 颗
+const N = IS_MOBILE ? 90 : 200;  // 手机粒子减半以上
 let cx, cy;
 
 function resizeCanvas() {
@@ -764,11 +799,13 @@ class DissolveParticle {
 
 function spawnDissolveParticles(el, style) {
   const rect = el.getBoundingClientRect();
-  // 粒子数量根据气泡面积决定，但有上下限
   const area = rect.width * rect.height;
-  const count = Math.min(180, Math.max(50, Math.floor(area / 280)));
+  // 手机上大幅减量：~25-70 颗，桌面 50-180 颗
+  const maxCount = IS_MOBILE ? 70 : 180;
+  const minCount = IS_MOBILE ? 25 : 50;
+  const divisor = IS_MOBILE ? 600 : 280;
+  const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
   for (let i = 0; i < count; i++) {
-    // 在气泡矩形内随机撒点
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
     dissolveParticles.push(new DissolveParticle(x, y, style));
@@ -904,7 +941,7 @@ function resizeSoul() {
 resizeSoul();
 addEventListener('resize', resizeSoul);
 
-const GALAXY_COUNT = 550;  // 加密：350 → 550
+const GALAXY_COUNT = IS_MOBILE ? 220 : 550;  // 手机大幅减量
 const galaxy = [];
 
 // 粒子颜色组 — 水墨银河色调：冷蓝紫主体 + 暖金核心点缀
