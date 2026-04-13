@@ -374,10 +374,12 @@ app.post('/api/transcribe',
     // NOTE: 不传 initial_prompt —— Whisper 会把 prompt 原样回声到结果里造成伪幻觉
     const form = new FormData();
     form.append('file', new Blob([audioBuffer], { type: 'audio/webm' }), 'audio.webm');
-    form.append('model', 'whisper-1');
+    // gpt-4o-mini-transcribe: 比 whisper-1 更好，几乎不幻觉
+    // 遇到不清楚的音频返回空而不是编造 YouTube 套话
+    form.append('model', 'gpt-4o-mini-transcribe');
     form.append('language', 'ja');
     form.append('temperature', '0');
-    form.append('response_format', 'verbose_json');
+    form.append('response_format', 'json');
 
     const tWhisperStart = Date.now();
     const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -397,40 +399,18 @@ app.post('/api/transcribe',
 
     const data = await whisperRes.json();
     const raw = (data.text || '').trim();
+    console.log('🎤 STT raw:', JSON.stringify(raw));
 
-    let maxNoSpeech = 0;
-    let minAvgLogprob = 0;
-    if (Array.isArray(data.segments) && data.segments.length > 0) {
-      for (const seg of data.segments) {
-        if (typeof seg.no_speech_prob === 'number' && seg.no_speech_prob > maxNoSpeech) {
-          maxNoSpeech = seg.no_speech_prob;
-        }
-        if (typeof seg.avg_logprob === 'number' && seg.avg_logprob < minAvgLogprob) {
-          minAvgLogprob = seg.avg_logprob;
-        }
-      }
-    }
-    console.log('🎤 Whisper raw:', JSON.stringify(raw),
-                '| no_speech=', maxNoSpeech.toFixed(3),
-                '| logprob=', minAvgLogprob.toFixed(3));
-
-    // 步骤 1：先尝试救援重复幻觉 —— 如果开头一段是对的、后面是重复，截出前面部分
-    // 不再一刀切整段丢掉
+    // gpt-4o-mini-transcribe 比 whisper-1 智能得多：
+    // - 听不清时返回空字符串（而不是编造 YouTube 套话）
+    // - 几乎不需要黑名单过滤
+    // 保留最基本的检查（空结果 + 重复检测）作为兜底
     const salvaged = salvageRepetition(raw);
-    const wasSalvaged = salvaged !== raw;
-
-    // 步骤 2：对（救援后的）文本做安全检查
-    //  1) no_speech_prob 高 → 静音被当话识别
-    //  2) 文本命中已知日语 Whisper 幻觉黑名单（YouTube 结尾套话等）
-    //  3) avg_logprob 过低 → 模型不自信
-    const highNoSpeech = maxNoSpeech > 0.55;
     const blacklisted = isWhisperHallucination(salvaged);
-    const lowConfidence = minAvgLogprob < -1.0;
 
-    if (!salvaged || highNoSpeech || blacklisted || lowConfidence) {
-      console.log('⚠️  hallucination filter hit:',
-                  { empty: !salvaged, highNoSpeech, blacklisted, lowConfidence, wasSalvaged },
-                  '| raw was:', JSON.stringify(raw));
+    if (!salvaged || blacklisted) {
+      console.log('⚠️  filter hit:', { empty: !salvaged, blacklisted },
+                  '| raw:', JSON.stringify(raw));
       return res.json({ text: '', hallucination: true, rawWhisper: raw });
     }
 
