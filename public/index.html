@@ -263,20 +263,15 @@
       }
       .dialogue{max-width:100%;padding:20px 4px 8px;}
 
-      /* 手机消散：飞走 + 淡出（保留酷感），不加 blur/brightness（省 GPU） */
+      /* 手机消散：气泡瞬间消失，粒子飞散才是主视觉 */
       .d-msg.dissolving .d-text{
-        animation:haru-dissolve 0.8s ease-in forwards;
+        animation:bubble-pop 0.15s ease-out forwards;
       }
       .d-you.dissolving .d-text{
-        animation:user-fade 0.6s ease-in forwards;
+        animation:bubble-pop 0.15s ease-out forwards;
       }
-      @keyframes haru-dissolve{
-        0%   {transform:translateY(0) scale(1);opacity:1;}
-        100% {transform:translateY(-30vh) scale(0.85);opacity:0;}
-      }
-      @keyframes user-fade{
-        0%   {transform:translateY(0) scale(1);opacity:1;}
-        100% {transform:translateY(-8vh) scale(0.92);opacity:0;}
+      @keyframes bubble-pop{
+        to {opacity:0;transform:scale(0.95);}
       }
 
       /* 手机 fly-stage：去掉所有贵操作 */
@@ -290,8 +285,8 @@
         box-shadow:none !important;
       }
 
-      /* 手机关闭非必要动画 */
-      .ink-mist{animation:none;}
+      /* 手机关闭非必要动画 + 隐藏可能导致渲染 bug 的 SVG 层 */
+      .ink-mist{display:none;}  /* 完全隐藏，不只是停动画 */
       .glow-1,.glow-2{animation:none;}
       .glow-center{animation:none;}
     }
@@ -842,14 +837,16 @@ class DissolveParticle {
   constructor(x, y, style) {
     this.x = x;
     this.y = y;
-    // 向上 + 轻微扩散（加速版：初速度和加速度都更大）
-    const spread = (Math.random() - 0.5) * 3.5;
-    this.vx = spread;
-    this.vy = -2.8 - Math.random() * 3.5;  // -2.8 to -6.3 (之前 -1.2 to -3.7)
+    // 四面八方爆散（不只是向上，更像"碎裂"）
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed - 1.5; // 稍微偏向上
     this.ax = 0;
-    this.ay = -0.04;  // 之前 -0.018，更强的向上吸引
+    this.ay = -0.02; // 轻微向上吸引
     this.life = 1;
-    this.decay = 0.018 + Math.random() * 0.012;  // 之前 0.006+0.006，生命 ~0.6-1s
+    // 手机上消失更快（~0.4s），桌面正常（~0.7s）
+    this.decay = IS_MOBILE ? (0.035 + Math.random() * 0.02) : (0.018 + Math.random() * 0.012);
     this.size = 0.6 + Math.random() * 1.6;
     this.phase = Math.random() * Math.PI * 2;
     // 颜色：cosmic = 紫蓝白金混合；faint = 偏冷偏淡
@@ -896,13 +893,8 @@ class DissolveParticle {
 
 function spawnDissolveParticles(el, style) {
   const rect = el.getBoundingClientRect();
-  const area = rect.width * rect.height;
-  // 手机：少量粒子（15-35 颗），只画 core 不画 halo（draw 里已处理）
-  // 桌面：正常量（50-180 颗）
-  const maxCount = IS_MOBILE ? 35 : 180;
-  const minCount = IS_MOBILE ? 15 : 50;
-  const divisor = IS_MOBILE ? 500 : 280;
-  const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
+  // 手机 20 颗（消散是主视觉），桌面更多
+  const count = IS_MOBILE ? 20 : Math.min(180, Math.max(50, Math.floor(rect.width * rect.height / 280)));
   for (let i = 0; i < count; i++) {
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
@@ -1243,6 +1235,8 @@ function drawSoul(t) {
     _lastDrawSoul = t;
   }
   sCtx.clearRect(0, 0, SW, SH);
+  // 安全检查：如果 soul 元素没有尺寸（可能因为 display:none 或未渲染），跳过
+  if (SW < 10 || SH < 10) { requestAnimationFrame(drawSoul); return; }
 
   // 中心星云光晕 —— 所有状态统一，同一个缓慢呼吸
   const b = (Math.sin(t * 0.001) + 1) / 2;
@@ -2005,7 +1999,7 @@ function dissolveTurn() {
     userClone?.remove();
     if (stage && stage.children.length === 0) stage.remove();
     dissolvingInProgress = false;
-  }, IS_MOBILE ? 900 : 1600);
+  }, IS_MOBILE ? 500 : 1600);
 }
 
 // ============================================================
