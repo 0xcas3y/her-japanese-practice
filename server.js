@@ -240,10 +240,15 @@ function isWhisperHallucination(text) {
     if (norm === nh) return true;
     if (norm.length < 30 && norm.includes(nh) && nh.length >= 6) return true;
   }
-  // 2) 重复型幻觉：检查文本里是否有 5 字以上子串重复 2+ 次
-  //   Whisper 在不清楚的音频上会反复输出同一短语
-  //   例："聞こえますか? 聞こえますか? ノー..."
+  // 2) 重复型幻觉
   if (hasExcessiveRepetition(norm)) return true;
+  // 3) YouTube 互动套话检测（含【】括号、コメント欄、リンク等关键词）
+  //    例："【質問に答えられる方はコメント欄にリンクを貼っておきます!】"
+  if (/【.*】/.test(text)) { console.log('🔁 YouTube bracket detected'); return true; }
+  if (/コメント欄|チャンネル登録|高評価|リンク.*貼/.test(text)) {
+    console.log('🔁 YouTube CTA keyword detected');
+    return true;
+  }
   return false;
 }
 
