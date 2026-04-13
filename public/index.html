@@ -924,13 +924,11 @@ class DissolveParticle {
 }
 
 function spawnDissolveParticles(el, style) {
+  // 手机完全跳过消散粒子 —— 只用 CSS opacity 淡出，零 GPU 负担
+  if (IS_MOBILE) return;
   const rect = el.getBoundingClientRect();
   const area = rect.width * rect.height;
-  // 手机更节省：~15-30 颗（之前 30-60），桌面保留原量（50-180 颗）
-  const maxCount = IS_MOBILE ? 30 : 180;
-  const minCount = IS_MOBILE ? 15 : 50;
-  const divisor = IS_MOBILE ? 600 : 280;
-  const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
+  const count = Math.min(180, Math.max(50, Math.floor(area / 280)));
   for (let i = 0; i < count; i++) {
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
@@ -1644,11 +1642,7 @@ function startVAD() {
 
     if (rms > maxRMS) maxRMS = rms;
     if (rms >= SPEECH_RMS_MIN) {
-      // 用户"开始说话"那一刻 —— 如果当前还有上一轮 Haru 气泡残留，触发消散
-      // 这样气泡停留到用户真的要回应时才飞走，不在 Haru 说完的瞬间就消失
-      if (speechFrames === 0 && currentTurn.haruIdx != null && !dissolvingInProgress) {
-        dissolveTurn();
-      }
+      // 消散现在由 speak() 结束后 1 秒自动触发，不再在 VAD 里检测
       speechFrames++;
     }
 
@@ -1996,7 +1990,9 @@ async function process(text) {
       await speak(data.response, dur => reveal?.setDuration(dur));
       reveal?.complete();
       haruBubble.classList.remove('typing');
-      // ⚠ 不在此处消散气泡。消散由 VAD 在用户"开始说话"那一刻触发
+      // Haru 说完 → 等 1 秒让用户看完 → 直接消散（不等麦克风检测声音）
+      await new Promise(r => setTimeout(r, 1000));
+      dissolveTurn();
     }
   } catch (err) {
     removeTyping();
