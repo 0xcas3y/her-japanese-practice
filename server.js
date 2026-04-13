@@ -101,14 +101,28 @@ app.post('/api/chat', async (req, res) => {
   }));
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      // 降低到 350：JSON 其他字段(corrected/explanation/native_casual/practice) 共 ~150 tokens,
-      max_tokens: 600,
-      temperature: 0.8,
-      system: buildSystemPrompt(memories || []),
-      messages: claudeMessages
-    });
+    // 529 overloaded 自动重试（最多 2 次，间隔 2 秒）
+    let response, retries = 0;
+    while (true) {
+      try {
+        response = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 600,
+          temperature: 0.8,
+          system: buildSystemPrompt(memories || []),
+          messages: claudeMessages
+        });
+        break; // 成功就跳出
+      } catch (apiErr) {
+        if (apiErr.status === 529 && retries < 2) {
+          retries++;
+          console.log(`⏳ Claude overloaded, retry ${retries}/2 in 2s...`);
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          throw apiErr; // 非 529 或重试耗尽
+        }
+      }
+    }
 
     const text = response.content[0].text;
 
@@ -209,6 +223,9 @@ const WHISPER_JA_HALLUCINATIONS = [
   '塩を一つまみ',
   '弱火で煮込みます',
   '中火で炒めます',
+  // 节目结尾 / 短套话
+  'おしまいです',
+  'おしまい',
   // 其它
   'おやすみなさい',
   'バイバイ',

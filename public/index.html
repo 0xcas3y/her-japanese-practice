@@ -1556,7 +1556,7 @@ function getGainedStream() {
     if (_gainNode) { try { _gainNode.disconnect(); } catch {} }
     _gainSrc = audioCtx.createMediaStreamSource(micStream);
     _gainNode = audioCtx.createGain();
-    _gainNode.gain.value = 3.0;  // 3x 增益：0.016 → 0.048
+    _gainNode.gain.value = 5.0;  // 5x 增益：0.016 → 0.08
     _gainDest = audioCtx.createMediaStreamDestination();
     _gainSrc.connect(_gainNode).connect(_gainDest);
     console.log('🔊 gain pipeline ready: 3x');
