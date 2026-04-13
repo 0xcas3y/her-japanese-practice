@@ -1605,8 +1605,8 @@ let silentSince = 0;
 let audioCtx = null, analyser = null, vadSource = null;
 let maxRMS = 0, speechFrames = 0; // track whether any real speech happened
 // 阈值放宽：原来 0.012/0.018 在嘈杂环境下会让"一直有噪音"的 VAD 永远不认为你沉默
-const SILENCE_THRESHOLD = 0.018; // 低于这个音量算安静
-const SPEECH_RMS_MIN = 0.024;    // 要有这个音量才算"真的说过话"
+const SILENCE_THRESHOLD = 0.028; // 低于这个音量算安静（提高：让手机环境噪音也算"静默"）
+const SPEECH_RMS_MIN = 0.040;    // 要有这个音量才算"真的说过话"（提高：和 silence 拉开差距）
 // SPEECH_FRAMES_MIN = 1：只要有 1 帧（100ms）真实语音就承认。
 // 之前是 3 帧（300ms），导致说短句"はい"、"そう"这种时 hadRealSpeech 永远 false，
 // VAD 等不到自动停止条件。
@@ -1920,7 +1920,11 @@ function textsLookRelated(a, b) {
 
 function tap() {
   if (isRecording) {
-    stopRec(false, true); // 第二个参数 true = 用户手动触发
+    // 手动停止时也触发消散飞走效果（VAD 检测不到时用户会手动点）
+    if (currentTurn.haruIdx != null && !dissolvingInProgress) {
+      dissolveTurn();
+    }
+    stopRec(false, true);
   } else {
     if (aiState === 'speaking') { ap.pause(); ap.currentTime = 0; }
     startRec();
