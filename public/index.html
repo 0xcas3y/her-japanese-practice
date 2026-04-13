@@ -1801,9 +1801,18 @@ async function stopRec(silent, manual = false) {
   if (finalText) {
     process(finalText);
   } else {
-    // Whisper 被判幻觉 + 浏览器也空 → 安静回 idle，用户点击重试
-    // 不弹 toast、不自动重试 —— stable 就是这样做的，体验更好
-    setState('idle');
+    // Whisper 被判幻觉 + 浏览器也空 → 静默继续听（不回 idle、不弹 toast）
+    // 用户感觉不到失败，直接重说就行
+    if (micReady && micStream && micStream.active && !sessionEnded) {
+      isRecording = true;
+      setState('listening');
+      finalTranscript = ''; lastTranscript = '';
+      startRecognition();
+      startMediaRecorder();
+      startVAD();
+    } else {
+      setState('idle');
+    }
   }
 }
 
