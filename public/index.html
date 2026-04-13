@@ -1990,41 +1990,31 @@ async function process(text) {
       await speak(data.response, dur => reveal?.setDuration(dur));
       reveal?.complete();
       haruBubble.classList.remove('typing');
-      // Haru 说完 → 等 1 秒让用户看完 → 直接消散（不等麦克风检测声音）
-      await new Promise(r => setTimeout(r, 1000));
-      dissolveTurn();
+      // 1 秒后消散（异步，不阻塞录音启动）
+      setTimeout(() => dissolveTurn(), 1000);
     }
   } catch (err) {
     removeTyping();
     toast(err.name === 'AbortError' ? '请求超时' : err.message);
-    // 出错时清掉残留气泡
     dissolveTurn();
   }
 
   isBusy = false;
 
-  // Haru 说完之后自动开始听（除非会话已结束）
+  // Haru 说完 → 立刻开始听（不等消散完成，避免死区丢音频）
   if (micReady && !sessionEnded) {
-    // 250ms 微缓冲 —— 让 TTS 的最末段衰减，echo cancellation 兜底剩下的
-    await new Promise(r => setTimeout(r, 250));
-
-    // 先确保麦克风流还活着 —— TTS 播放期间 iOS 有时会释放它
     const micOk = await ensureMic();
     if (!micOk) {
       console.warn('⚠️  auto-listen: micStream lost, giving up');
       setState('waiting');
       return;
     }
-    console.log('⏱  auto-listen starting for next turn');
     isRecording = true;
     setState('listening');
     live.classList.add('on');
     finalTranscript = ''; lastTranscript = '';
     startRecognition();
-    const recOk = startMediaRecorder();
-    if (!recOk) {
-      console.error('❌ auto-listen: could not start recorder, will rely on browser recognition only');
-    }
+    startMediaRecorder();
     startVAD();
   } else {
     setState('waiting');
