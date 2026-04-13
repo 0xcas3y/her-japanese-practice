@@ -924,11 +924,14 @@ class DissolveParticle {
 }
 
 function spawnDissolveParticles(el, style) {
-  // 手机完全跳过消散粒子 —— 只用 CSS opacity 淡出，零 GPU 负担
-  if (IS_MOBILE) return;
   const rect = el.getBoundingClientRect();
   const area = rect.width * rect.height;
-  const count = Math.min(180, Math.max(50, Math.floor(area / 280)));
+  // 手机：少量粒子（15-35 颗），只画 core 不画 halo（draw 里已处理）
+  // 桌面：正常量（50-180 颗）
+  const maxCount = IS_MOBILE ? 35 : 180;
+  const minCount = IS_MOBILE ? 15 : 50;
+  const divisor = IS_MOBILE ? 500 : 280;
+  const count = Math.min(maxCount, Math.max(minCount, Math.floor(area / divisor)));
   for (let i = 0; i < count; i++) {
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
@@ -1658,6 +1661,10 @@ function startVAD() {
       // 必须有内容才自动发送 —— 用 hadRealSpeech 判断（不再依赖 live.textContent 因为它现在只是动效）
       if (hadRealSpeech() && silentSince >= SILENCE_DURATION) {
         console.log('⏹  VAD silence timeout → auto stopRec');
+        // 自动停止时也确保消散触发（如果之前 VAD 没检测到第一帧语音就没消散过）
+        if (currentTurn.haruIdx != null && !dissolvingInProgress) {
+          dissolveTurn();
+        }
         stopRec(false);
       }
     }
