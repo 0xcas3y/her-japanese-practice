@@ -1642,7 +1642,10 @@ function startVAD() {
 
     if (rms > maxRMS) maxRMS = rms;
     if (rms >= SPEECH_RMS_MIN) {
-      // 消散现在由 speak() 结束后 1 秒自动触发，不再在 VAD 里检测
+      // 用户开口那一刻 → 消散上一轮的 Haru 气泡（昨天验证过的稳定方案）
+      if (speechFrames === 0 && currentTurn.haruIdx != null && !dissolvingInProgress) {
+        dissolveTurn();
+      }
       speechFrames++;
     }
 
@@ -1990,9 +1993,7 @@ async function process(text) {
       await speak(data.response, dur => reveal?.setDuration(dur));
       reveal?.complete();
       haruBubble.classList.remove('typing');
-      // Haru 说完 → 立刻消散 + 立刻开始录音（同时进行，互不干扰）
-      // dissolveTurn 只做 DOM/CSS，不碰 mic/audio
-      dissolveTurn();
+      // 不在这里消散 —— 等用户开口那一刻由 VAD 触发（昨天验证过的稳定方案）
     }
   } catch (err) {
     removeTyping();
