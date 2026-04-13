@@ -1193,20 +1193,25 @@ class GalaxyPt {
     const breathR = 1 + breath * 0.08;
     const wobbleX = Math.sin(this.phase) * 0.015;
     const wobbleY = Math.cos(this.phase * 0.8) * 0.012;
-    this.x = 0.5 + Math.cos(this.orbitAngle) * this.orbitR * 1.35 * breathR + wobbleX;
-    this.y = 0.42 + Math.sin(this.orbitAngle) * this.orbitR * 0.72 * breathR + wobbleY;
+    // clamp 到画布内 —— 防止手机 GPU 在边角留残影
+    this.x = Math.max(0.02, Math.min(0.98,
+      0.5 + Math.cos(this.orbitAngle) * this.orbitR * 1.35 * breathR + wobbleX));
+    this.y = Math.max(0.02, Math.min(0.98,
+      0.42 + Math.sin(this.orbitAngle) * this.orbitR * 0.72 * breathR + wobbleY));
     this.alpha = this.baseAlpha * (0.75 + breath * 0.35) + Math.sin(this.phase * 2) * 0.1;
     this.size = this.baseSize * (0.9 + breath * 0.15) + Math.sin(this.phase * 2) * 0.3;
   }
   draw() {
     const px = this.x * SW;
     const py = this.y * SH;
+    // 超出画布就不画（防止手机渲染残影）
+    if (px < -5 || px > SW + 5 || py < -5 || py > SH + 5) return;
     const a = Math.max(0, Math.min(1, this.alpha));
     const s = Math.max(0.2, this.size);
     const { r, g, b } = this.col;
 
-    // 发光
-    if (s > 1) {
+    // 发光（手机跳过 halo，只画 core）
+    if (s > 1 && !IS_MOBILE) {
       sCtx.beginPath();
       sCtx.arc(px, py, s * 2.5, 0, Math.PI * 2);
       sCtx.fillStyle = `rgba(${r},${g},${b},${a * 0.06})`;
