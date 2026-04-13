@@ -263,44 +263,36 @@
       }
       .dialogue{max-width:100%;padding:20px 4px 8px;}
 
-      /* 手机消散动画：极轻量，快速完成 —— 不和 VAD 抢主线程 */
-      /* 完全去掉 filter:blur / brightness / mask，只保留 transform + opacity */
+      /* 手机消散：简洁的淡出，不用飞行 —— 顺滑优先 */
       .d-msg.dissolving .d-text{
-        animation:haru-dissolve 0.65s cubic-bezier(.4,.0,.3,1) forwards;
+        animation:haru-dissolve 0.5s ease-out forwards;
       }
       .d-you.dissolving .d-text{
-        animation:user-fade 0.5s cubic-bezier(.4,.0,.3,1) forwards;
+        animation:user-fade 0.4s ease-out forwards;
       }
       @keyframes haru-dissolve{
-        0%   {transform:translateY(0) scale(1);opacity:1;}
-        50%  {transform:translateY(-22vh) scale(0.88);opacity:0.35;}
-        100% {transform:translateY(-45vh) scale(0.76);opacity:0;}
+        0%   {opacity:1;}
+        100% {opacity:0;}
       }
       @keyframes user-fade{
-        0%   {transform:translateY(0) scale(1);opacity:1;}
-        100% {transform:translateY(-10vh) scale(0.9);opacity:0;}
+        0%   {opacity:1;}
+        100% {opacity:0;}
       }
 
-      /* 手机 fly-stage：彻底去掉 mask + overflow:hidden 足矣 */
-      /* mask-image 是 iOS Safari 上最贵的合成操作之一 */
+      /* 手机 fly-stage：去掉所有贵操作 */
       .fly-stage{
         mask-image:none;
         -webkit-mask-image:none;
       }
-      /* Clone 的 backdrop-filter 强制关闭（即使桌面设了 12px 也关） */
       .fly-stage .d-msg .d-text{
         backdrop-filter:none !important;
         -webkit-backdrop-filter:none !important;
         box-shadow:none !important;
       }
 
-      /* 手机 ink-mist：关闭漂移动画，静止显示 */
+      /* 手机关闭非必要动画 */
       .ink-mist{animation:none;}
-
-      /* 手机 ambient glows：不要额外的漂移动画 */
       .glow-1,.glow-2{animation:none;}
-
-      /* 手机 .glow-center 呼吸也关掉 —— 用 soul canvas 的呼吸就够了 */
       .glow-center{animation:none;}
     }
 
@@ -970,59 +962,55 @@ class StarFlash {
   }
   draw() {
     if (this.life <= 0) return;
-    // 强度曲线：0→1→0 经过 sin 曲线，在中段达到峰值
     const progress = 1 - this.life;
     const intensity = Math.sin(progress * Math.PI);
     if (intensity <= 0) return;
     const halo = this.maxHalo * (0.3 + intensity * 0.7);
     const core = 0.8 + intensity * 1.8;
 
-    // 外层大光晕
-    ctx.fillStyle = `rgba(${this.col},${intensity * 0.08})`;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, halo * 2.2, 0, Math.PI * 2);
-    ctx.fill();
-    // 中层
-    ctx.fillStyle = `rgba(${this.col},${intensity * 0.28})`;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, halo, 0, Math.PI * 2);
-    ctx.fill();
-    // 核心亮点
-    ctx.fillStyle = `rgba(${this.col},${intensity})`;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, core, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 十字光芒 —— 强度超过一半才显示，让闪烁感更突出
-    if (intensity > 0.4) {
-      const flareLen = halo * 3.2 * (intensity - 0.4) / 0.6;
-      const flareAlpha = (intensity - 0.4) * 1.2;
-      const grad = ctx.createLinearGradient(
-        this.x - flareLen, this.y, this.x + flareLen, this.y
-      );
-      grad.addColorStop(0, `rgba(${this.col},0)`);
-      grad.addColorStop(0.5, `rgba(${this.col},${flareAlpha})`);
-      grad.addColorStop(1, `rgba(${this.col},0)`);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 1.3;
-      ctx.lineCap = 'round';
-      // 水平光芒
+    // 手机版：只画核心 + 一层光晕（省 2 次 arc + 2 次 linearGradient）
+    // 桌面版：保留完整的三层 + 十字光芒
+    if (IS_MOBILE) {
+      // 光晕
+      ctx.fillStyle = `rgba(${this.col},${intensity * 0.25})`;
       ctx.beginPath();
-      ctx.moveTo(this.x - flareLen, this.y);
-      ctx.lineTo(this.x + flareLen, this.y);
-      ctx.stroke();
-      // 垂直光芒
-      const vgrad = ctx.createLinearGradient(
-        this.x, this.y - flareLen, this.x, this.y + flareLen
-      );
-      vgrad.addColorStop(0, `rgba(${this.col},0)`);
-      vgrad.addColorStop(0.5, `rgba(${this.col},${flareAlpha})`);
-      vgrad.addColorStop(1, `rgba(${this.col},0)`);
-      ctx.strokeStyle = vgrad;
+      ctx.arc(this.x, this.y, halo * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      // 核心
+      ctx.fillStyle = `rgba(${this.col},${intensity})`;
       ctx.beginPath();
-      ctx.moveTo(this.x, this.y - flareLen);
-      ctx.lineTo(this.x, this.y + flareLen);
-      ctx.stroke();
+      ctx.arc(this.x, this.y, core, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // 外层大光晕
+      ctx.fillStyle = `rgba(${this.col},${intensity * 0.08})`;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, halo * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      // 中层
+      ctx.fillStyle = `rgba(${this.col},${intensity * 0.28})`;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, halo, 0, Math.PI * 2);
+      ctx.fill();
+      // 核心亮点
+      ctx.fillStyle = `rgba(${this.col},${intensity})`;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, core, 0, Math.PI * 2);
+      ctx.fill();
+      // 十字光芒（只桌面）
+      if (intensity > 0.4) {
+        const flareLen = halo * 3.0 * (intensity - 0.4) / 0.6;
+        const flareAlpha = (intensity - 0.4) * 0.9;
+        ctx.strokeStyle = `rgba(${this.col},${flareAlpha})`;
+        ctx.lineWidth = 1.2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(this.x - flareLen, this.y);
+        ctx.lineTo(this.x + flareLen, this.y);
+        ctx.moveTo(this.x, this.y - flareLen);
+        ctx.lineTo(this.x, this.y + flareLen);
+        ctx.stroke();
+      }
     }
   }
   get dead() { return this.life <= 0; }
@@ -1625,7 +1613,7 @@ const SPEECH_RMS_MIN = 0.024;    // 要有这个音量才算"真的说过话"
 // 之前是 3 帧（300ms），导致说短句"はい"、"そう"这种时 hadRealSpeech 永远 false，
 // VAD 等不到自动停止条件。
 const SPEECH_FRAMES_MIN = 1;
-const SILENCE_DURATION = 2000;   // 静默 2 秒后自动发送
+const SILENCE_DURATION = 1000;   // 静默 1 秒后自动发送（快节奏对话）
 
 function startVAD() {
   if (!micStream) return;
@@ -2111,7 +2099,7 @@ function dissolveTurn() {
     userClone?.remove();
     if (stage && stage.children.length === 0) stage.remove();
     dissolvingInProgress = false;
-  }, IS_MOBILE ? 750 : 1600);
+  }, IS_MOBILE ? 550 : 1600);
 }
 
 // ============================================================
