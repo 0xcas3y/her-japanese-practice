@@ -1543,17 +1543,43 @@ const SPEECH_RMS_MIN = 0.040;
 const SPEECH_FRAMES_MIN = 1;
 const SILENCE_DURATION = IS_MOBILE ? 1000 : 2000;
 
+// 共享的增益 stream —— VAD 和 MediaRecorder 都用这个
+let _gainNode = null;
+let _gainDest = null;
+let _gainSrc = null;
+
+function getGainedStream() {
+  // 已经建好就复用
+  if (_gainDest && _gainDest.stream.active) return _gainDest.stream;
+  try {
+    if (_gainSrc) { try { _gainSrc.disconnect(); } catch {} }
+    if (_gainNode) { try { _gainNode.disconnect(); } catch {} }
+    _gainSrc = audioCtx.createMediaStreamSource(micStream);
+    _gainNode = audioCtx.createGain();
+    _gainNode.gain.value = 3.0;  // 3x 增益：0.016 → 0.048
+    _gainDest = audioCtx.createMediaStreamDestination();
+    _gainSrc.connect(_gainNode).connect(_gainDest);
+    console.log('🔊 gain pipeline ready: 3x');
+    return _gainDest.stream;
+  } catch (err) {
+    console.warn('⚠️  gain failed, using raw mic:', err);
+    return micStream;
+  }
+}
+
 function startVAD() {
   if (!micStream) return;
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 
-  // 断开旧的
+  // 断开旧的 VAD 连接
   if (vadSource) { try { vadSource.disconnect(); } catch {} }
 
+  // 用增益后的 stream 做 VAD（这样 peakRMS 也是放大后的值）
+  const gainedStream = getGainedStream();
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 512;
-  vadSource = audioCtx.createMediaStreamSource(micStream);
+  vadSource = audioCtx.createMediaStreamSource(gainedStream);
   vadSource.connect(analyser);
 
   const data = new Float32Array(analyser.fftSize);
@@ -1638,9 +1664,11 @@ function startMediaRecorder() {
     // 关键性能优化：限制 Opus 码率到 32kbps（语音清晰，体积 1/4-1/6）
     // 默认码率可能高达 128-256kbps，对语音是浪费
     // 32kbps × 10s = 40KB (vs 320KB with 256kbps default)
-    mediaRecorder = new MediaRecorder(micStream, {
+    // 用增益后的 stream（VAD 和 Whisper 看到的都是 3x 放大的音频）
+    const recStream = (audioCtx && _gainDest) ? getGainedStream() : micStream;
+    mediaRecorder = new MediaRecorder(recStream, {
       mimeType,
-      audioBitsPerSecond: 32000  // 32 kbps, speech-optimized
+      audioBitsPerSecond: 32000
     });
     mediaRecorder.ondataavailable = e => {
       if (e.data.size > 0) audioChunks.push(e.data);
