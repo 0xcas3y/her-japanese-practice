@@ -263,20 +263,20 @@
       }
       .dialogue{max-width:100%;padding:20px 4px 8px;}
 
-      /* 手机消散：简洁的淡出，不用飞行 —— 顺滑优先 */
+      /* 手机消散：飞走 + 淡出（保留酷感），不加 blur/brightness（省 GPU） */
       .d-msg.dissolving .d-text{
-        animation:haru-dissolve 0.5s ease-out forwards;
+        animation:haru-dissolve 0.8s ease-in forwards;
       }
       .d-you.dissolving .d-text{
-        animation:user-fade 0.4s ease-out forwards;
+        animation:user-fade 0.6s ease-in forwards;
       }
       @keyframes haru-dissolve{
-        0%   {opacity:1;}
-        100% {opacity:0;}
+        0%   {transform:translateY(0) scale(1);opacity:1;}
+        100% {transform:translateY(-30vh) scale(0.85);opacity:0;}
       }
       @keyframes user-fade{
-        0%   {opacity:1;}
-        100% {opacity:0;}
+        0%   {transform:translateY(0) scale(1);opacity:1;}
+        100% {transform:translateY(-8vh) scale(0.92);opacity:0;}
       }
 
       /* 手机 fly-stage：去掉所有贵操作 */
@@ -2001,14 +2001,8 @@ async function process(text) {
 
   isBusy = false;
 
-  // Haru 说完 → 立刻开始听（不等消散完成，避免死区丢音频）
-  if (micReady && !sessionEnded) {
-    const micOk = await ensureMic();
-    if (!micOk) {
-      console.warn('⚠️  auto-listen: micStream lost, giving up');
-      setState('waiting');
-      return;
-    }
+  // Haru 说完 → 零延迟开始听（micStream 从第一次 tap 就一直活着，不重新获取）
+  if (micReady && micStream && micStream.active && !sessionEnded) {
     isRecording = true;
     setState('listening');
     live.classList.add('on');
@@ -2085,7 +2079,7 @@ function dissolveTurn() {
     userClone?.remove();
     if (stage && stage.children.length === 0) stage.remove();
     dissolvingInProgress = false;
-  }, IS_MOBILE ? 550 : 1600);
+  }, IS_MOBILE ? 900 : 1600);
 }
 
 // ============================================================
