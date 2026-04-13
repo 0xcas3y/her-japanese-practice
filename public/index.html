@@ -1990,8 +1990,9 @@ async function process(text) {
       await speak(data.response, dur => reveal?.setDuration(dur));
       reveal?.complete();
       haruBubble.classList.remove('typing');
-      // 1 秒后消散（异步，不阻塞录音启动）
-      setTimeout(() => dissolveTurn(), 1000);
+      // Haru 说完 → 立刻消散 + 立刻开始录音（同时进行，互不干扰）
+      // dissolveTurn 只做 DOM/CSS，不碰 mic/audio
+      dissolveTurn();
     }
   } catch (err) {
     removeTyping();
@@ -2001,7 +2002,7 @@ async function process(text) {
 
   isBusy = false;
 
-  // Haru 说完 → 零延迟开始听（micStream 从第一次 tap 就一直活着，不重新获取）
+  // 零延迟开始听 —— dissolveTurn 和录音同时进行，没有死区
   if (micReady && micStream && micStream.active && !sessionEnded) {
     isRecording = true;
     setState('listening');
