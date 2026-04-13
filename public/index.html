@@ -1536,11 +1536,12 @@ let vadInterval = null;
 let silentSince = 0;
 let audioCtx = null, analyser = null, vadSource = null;
 let maxRMS = 0, speechFrames = 0;
-// 桌面 vs 手机分开设阈值 —— 桌面麦克风好+环境安静，不需要手机那么高的门槛
-const SILENCE_THRESHOLD = IS_MOBILE ? 0.028 : 0.015; // 手机噪音高，桌面安静
-const SPEECH_RMS_MIN = IS_MOBILE ? 0.040 : 0.022;    // 手机需要大声，桌面正常说话就够
+// 阈值统一（手机的值在两种设备上都好用）
+// 只有等待时间不同：桌面 2 秒给思考空间，手机 1 秒快节奏
+const SILENCE_THRESHOLD = 0.028;
+const SPEECH_RMS_MIN = 0.040;
 const SPEECH_FRAMES_MIN = 1;
-const SILENCE_DURATION = IS_MOBILE ? 1000 : 2000;     // 手机 1 秒快节奏，桌面 2 秒给思考空间
+const SILENCE_DURATION = IS_MOBILE ? 1000 : 2000;
 
 function startVAD() {
   if (!micStream) return;
@@ -1800,21 +1801,9 @@ async function stopRec(silent, manual = false) {
   if (finalText) {
     process(finalText);
   } else {
-    // Whisper 被判幻觉 + 浏览器也空 → 别掉回 idle 让用户手动重点
-    // 自动重新开始监听，让用户再说一次就行
-    console.warn('⚠️  no usable transcript — auto-restarting listening');
-    toast('没听清，再说一次');
-    if (micReady && !sessionEnded) {
-      isRecording = true;
-      setState('listening');
-      live.classList.add('on');
-      finalTranscript = ''; lastTranscript = '';
-      startRecognition();
-      startMediaRecorder();
-      startVAD();
-    } else {
-      setState('idle');
-    }
+    // Whisper 被判幻觉 + 浏览器也空 → 安静回 idle，用户点击重试
+    // 不弹 toast、不自动重试 —— stable 就是这样做的，体验更好
+    setState('idle');
   }
 }
 
