@@ -415,28 +415,9 @@ app.post('/api/transcribe',
 
     // 大幅速度优化：如果 Whisper 已经输出了标点（通常会），直接返回
     // 否则才走 Claude 的"补标点"步骤（之前每次都走 Claude，浪费 2-4 秒/轮）
-    const hasPunctuation = /[。、？！，,.?!…]/.test(salvaged);
-    if (hasPunctuation || salvaged.length <= 5) {
-      console.log(`🎤 returning salvaged directly (punct=${hasPunctuation}, total=${Date.now() - tStart}ms)`);
-      return res.json({ text: salvaged });
-    }
-
-    // 没标点 → 过 Claude 补一道（少数情况）
-    try {
-      const fixRes = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 200,
-        messages: [{
-          role: 'user',
-          content: `以下は音声認識の結果です。句読点（、。）や間（...）を適切に追加して、自然な話し言葉にしてください。内容は一切変えないでください。結果だけ出力：\n${salvaged}`
-        }]
-      });
-      const fixed = fixRes.content[0].text.trim();
-      console.log('🎤 Fixed via Claude:', fixed);
-      res.json({ text: fixed });
-    } catch {
-      res.json({ text: salvaged });
-    }
+    // gpt-4o-mini-transcribe 自带标点，直接返回
+    console.log(`🎤 returning: ${JSON.stringify(salvaged)} (${Date.now() - tStart}ms)`);
+    res.json({ text: salvaged });
   } catch (err) {
     console.error('Transcribe error:', err.message);
     res.status(500).json({ error: '语音识别失败' });
