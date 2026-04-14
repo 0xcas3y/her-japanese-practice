@@ -1051,9 +1051,10 @@ class ShootingStar {
 // 手机 listening 时降到 ~15fps —— 把主线程让给 VAD
 let _lastDrawPts = 0;
 function drawPts(t) {
-  // 手机全局 30fps（不只是 listening）
   if (IS_MOBILE) {
-    if (t - _lastDrawPts < 33) {
+    // speaking/thinking 时 10fps（用户看的是气泡不是星空），其他 15fps
+    const budget = (aiState === 'speaking' || aiState === 'thinking') ? 100 : 66;
+    if (t - _lastDrawPts < budget) {
       requestAnimationFrame(drawPts);
       return;
     }
@@ -1078,7 +1079,8 @@ function drawPts(t) {
   // 星星亮闪：平均 7-15 秒一颗
   if (t >= nextStarFlash) {
     starFlashes.push(new StarFlash());
-    nextStarFlash = t + 7000 + Math.random() * 8000;
+    // 手机间隔拉大（省 GPU），桌面保持
+    nextStarFlash = t + (IS_MOBILE ? 15000 : 7000) + Math.random() * (IS_MOBILE ? 10000 : 8000);
   }
   for (let i = starFlashes.length - 1; i >= 0; i--) {
     starFlashes[i].update();
@@ -1095,7 +1097,7 @@ function drawPts(t) {
   // 存在感心跳：平均 6-10 秒一次
   if (t >= nextPresencePulse) {
     presencePulses.push(new PresencePulse());
-    nextPresencePulse = t + 6000 + Math.random() * 4000;
+    nextPresencePulse = t + (IS_MOBILE ? 15000 : 6000) + Math.random() * (IS_MOBILE ? 10000 : 4000);
   }
   for (let i = presencePulses.length - 1; i >= 0; i--) {
     presencePulses[i].update();
@@ -1250,9 +1252,10 @@ for (let i = 0; i < GALAXY_COUNT; i++) galaxy.push(new GalaxyPt());
 // 手机 listening 时也降到 ~15fps
 let _lastDrawSoul = 0;
 function drawSoul(t) {
-  // 手机全局 30fps（不只是 listening）—— 省一半 GPU，视觉无差异（银河是慢动画）
   if (IS_MOBILE) {
-    if (t - _lastDrawSoul < 33) {
+    // speaking/thinking 时 10fps，其他 15fps
+    const budget = (aiState === 'speaking' || aiState === 'thinking') ? 100 : 66;
+    if (t - _lastDrawSoul < budget) {
       requestAnimationFrame(drawSoul);
       return;
     }
