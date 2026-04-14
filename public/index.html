@@ -1253,16 +1253,19 @@ for (let i = 0; i < GALAXY_COUNT; i++) galaxy.push(new GalaxyPt());
 let _lastDrawSoul = 0;
 function drawSoul(t) {
   if (IS_MOBILE) {
-    // speaking/thinking 时 10fps，其他 15fps
-    const budget = (aiState === 'speaking' || aiState === 'thinking') ? 100 : 66;
-    if (t - _lastDrawSoul < budget) {
+    // speaking/thinking 时完全暂停银河绘制（省整个 canvas 的 GPU 开销）
+    // 用户在看气泡和听声音，不需要银河动画
+    if (aiState === 'speaking' || aiState === 'thinking') {
+      requestAnimationFrame(drawSoul);
+      return;
+    }
+    if (t - _lastDrawSoul < 66) { // 15fps
       requestAnimationFrame(drawSoul);
       return;
     }
     _lastDrawSoul = t;
   }
   sCtx.clearRect(0, 0, SW, SH);
-  // 安全检查：如果 soul 元素没有尺寸（可能因为 display:none 或未渲染），跳过
   if (SW < 10 || SH < 10) { requestAnimationFrame(drawSoul); return; }
 
   // 中心星云光晕
@@ -1554,7 +1557,7 @@ let maxRMS = 0, speechFrames = 0;
 const SILENCE_THRESHOLD = IS_MOBILE ? 0.028 : 0.014;
 const SPEECH_RMS_MIN = IS_MOBILE ? 0.040 : 0.024;
 const SPEECH_FRAMES_MIN = 1;
-const SILENCE_DURATION = IS_MOBILE ? 1000 : 3000;  // 桌面 3 秒，给充足思考空间
+const SILENCE_DURATION = IS_MOBILE ? 1500 : 3000;  // 手机 1.5 秒，桌面 3 秒
 
 // 共享的增益 stream —— VAD 和 MediaRecorder 都用这个
 let _gainNode = null;
