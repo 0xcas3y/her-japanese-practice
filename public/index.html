@@ -1538,8 +1538,9 @@ let audioCtx = null, analyser = null, vadSource = null;
 let maxRMS = 0, speechFrames = 0;
 // 阈值统一（手机的值在两种设备上都好用）
 // 只有等待时间不同：桌面 2 秒给思考空间，手机 1 秒快节奏
-const SILENCE_THRESHOLD = 0.028;
-const SPEECH_RMS_MIN = 0.040;
+// 桌面用 stable 验证过的值（配合 5x gain），手机保持高阈值
+const SILENCE_THRESHOLD = IS_MOBILE ? 0.028 : 0.014;
+const SPEECH_RMS_MIN = IS_MOBILE ? 0.040 : 0.024;
 const SPEECH_FRAMES_MIN = 1;
 const SILENCE_DURATION = IS_MOBILE ? 1000 : 2000;
 
