@@ -377,7 +377,7 @@ app.post('/api/transcribe',
     // gpt-4o-mini-transcribe: 比 whisper-1 更好，几乎不幻觉
     // 遇到不清楚的音频返回空而不是编造 YouTube 套话
     form.append('model', 'gpt-4o-mini-transcribe');
-    form.append('prompt', 'この音声は日本語の会話です。日本語で書き起こしてください。');
+    form.append('language', 'ja');
     form.append('response_format', 'json');
 
     const tWhisperStart = Date.now();
