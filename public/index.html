@@ -1559,17 +1559,24 @@ let _gainDest = null;
 let _gainSrc = null;
 
 function getGainedStream() {
-  // 已经建好就复用
   if (_gainDest && _gainDest.stream.active) return _gainDest.stream;
   try {
     if (_gainSrc) { try { _gainSrc.disconnect(); } catch {} }
     if (_gainNode) { try { _gainNode.disconnect(); } catch {} }
+    // 链路：micStream → gain(2.5x) → compressor(防削波) → destination
     _gainSrc = audioCtx.createMediaStreamSource(micStream);
     _gainNode = audioCtx.createGain();
-    _gainNode.gain.value = 5.0;  // 5x 增益：0.016 → 0.08
+    _gainNode.gain.value = 2.5;
+    const compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.value = -10;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.1;
     _gainDest = audioCtx.createMediaStreamDestination();
-    _gainSrc.connect(_gainNode).connect(_gainDest);
-    console.log('🔊 gain pipeline ready: 3x');
+    _gainSrc.connect(_gainNode);
+    _gainNode.connect(compressor);
+    compressor.connect(_gainDest);
+    console.log('🔊 gain: 2.5x + compressor');
     return _gainDest.stream;
   } catch (err) {
     console.warn('⚠️  gain failed, using raw mic:', err);
