@@ -894,7 +894,8 @@ class DissolveParticle {
 function spawnDissolveParticles(el, style) {
   const rect = el.getBoundingClientRect();
   // 手机 20 颗（消散是主视觉），桌面更多
-  const count = IS_MOBILE ? 20 : Math.min(180, Math.max(50, Math.floor(rect.width * rect.height / 280)));
+  // 桌面 80-250 颗壮观消散，手机 20 颗轻量
+  const count = IS_MOBILE ? 20 : Math.min(250, Math.max(80, Math.floor(rect.width * rect.height / 200)));
   for (let i = 0; i < count; i++) {
     const x = rect.left + Math.random() * rect.width;
     const y = rect.top + Math.random() * rect.height;
@@ -1203,11 +1204,12 @@ class GalaxyPt {
   }
   update(t) {
     this.phase += this.speed;
-    // 统一所有状态 —— 不分 listening/speaking/idle/thinking
-    // 始终是"太空中缓缓漂浮、忽近忽远"的感觉，无切换跳变
+    // 太空中缓缓漂浮、忽近忽远
+    // 桌面 speaking 时脉动更强（像 Haru 的心跳加速）
     this.orbitAngle += 0.00025 + this.orbitR * 0.0001;
     const breath = (Math.sin(t * 0.001) + 1) / 2;
-    const breathR = 1 + breath * 0.08;
+    const speakBoost = (!IS_MOBILE && aiState === 'speaking') ? 0.15 : 0.08;
+    const breathR = 1 + breath * speakBoost;
     const wobbleX = Math.sin(this.phase) * 0.015;
     const wobbleY = Math.cos(this.phase * 0.8) * 0.012;
     // clamp 到画布内 —— 防止手机 GPU 在边角留残影
@@ -1260,10 +1262,17 @@ function drawSoul(t) {
   // 安全检查：如果 soul 元素没有尺寸（可能因为 display:none 或未渲染），跳过
   if (SW < 10 || SH < 10) { requestAnimationFrame(drawSoul); return; }
 
-  // 中心星云光晕 —— 所有状态统一，同一个缓慢呼吸
+  // 中心星云光晕
   const b = (Math.sin(t * 0.001) + 1) / 2;
-  const breathScale = 0.92 + b * 0.12;
-  const intensity = 0.45 + b * 0.55;
+  let breathScale, intensity;
+  if (!IS_MOBILE && aiState === 'speaking') {
+    // 桌面 speaking：光晕更亮更大，像 Haru 在发光
+    breathScale = 0.95 + b * 0.2;
+    intensity = 0.7 + b * 0.6;
+  } else {
+    breathScale = 0.92 + b * 0.12;
+    intensity = 0.45 + b * 0.55;
+  }
 
   if (IS_MOBILE) {
     // 手机：只画 1 层渐变（省 3 次 createRadialGradient，最大的 GPU 节省）
@@ -1542,7 +1551,7 @@ let maxRMS = 0, speechFrames = 0;
 const SILENCE_THRESHOLD = IS_MOBILE ? 0.028 : 0.014;
 const SPEECH_RMS_MIN = IS_MOBILE ? 0.040 : 0.024;
 const SPEECH_FRAMES_MIN = 1;
-const SILENCE_DURATION = IS_MOBILE ? 1000 : 2000;
+const SILENCE_DURATION = IS_MOBILE ? 1000 : 3000;  // 桌面 3 秒，给充足思考空间
 
 // 共享的增益 stream —— VAD 和 MediaRecorder 都用这个
 let _gainNode = null;
